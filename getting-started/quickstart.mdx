@@ -1,0 +1,126 @@
+---
+title: "Quick start"
+description: "Generate your first PDF document with QuestPDF in under 5 minutes."
+---
+
+This guide walks you through installing QuestPDF, setting your license, writing a document, and generating a PDF file.
+
+<Steps>
+  <Step title="Install the package">
+    Add QuestPDF to your project via the .NET CLI:
+
+    ```bash
+    dotnet add package QuestPDF
+    ```
+
+    See [installation](/getting-started/installation) for IDE-based install options and supported frameworks.
+  </Step>
+
+  <Step title="Set your license">
+    Before generating any PDF, set your license type. For most users, `Community` is free:
+
+    ```csharp
+    using QuestPDF.Infrastructure;
+
+    QuestPDF.Settings.License = LicenseType.Community;
+    ```
+
+    <Note>
+      The license must be set before calling any QuestPDF API. See [license setup](/getting-started/license-setup) for all available tiers.
+    </Note>
+  </Step>
+
+  <Step title="Create a document">
+    Use `Document.Create()` to define a page with a header, content, and footer:
+
+    ```csharp
+    using QuestPDF.Fluent;
+    using QuestPDF.Helpers;
+    using QuestPDF.Infrastructure;
+
+    // set your license here:
+    // QuestPDF.Settings.License = LicenseType.Community;
+
+    Document.Create(container =>
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.PageColor(Colors.White);
+            page.DefaultTextStyle(x => x.FontSize(20));
+            
+            page.Header()
+                .Text("Hello PDF!")
+                .SemiBold().FontSize(36).FontColor(Colors.Blue.Medium);
+            
+            page.Content()
+                .PaddingVertical(1, Unit.Centimetre)
+                .Column(x =>
+                {
+                    x.Spacing(20);
+                    
+                    x.Item().Text(Placeholders.LoremIpsum());
+                    x.Item().Image(Placeholders.Image(200, 100));
+                });
+            
+            page.Footer()
+                .AlignCenter()
+                .Text(x =>
+                {
+                    x.Span("Page ");
+                    x.CurrentPageNumber();
+                });
+        });
+    })
+    .GeneratePdf("hello.pdf");
+    ```
+  </Step>
+
+  <Step title="Generate the PDF">
+    Call `.GeneratePdf("output.pdf")` at the end of the fluent chain to write the file to disk:
+
+    ```csharp
+    .GeneratePdf("hello.pdf");
+    ```
+
+    The file is written to the current working directory. You can also generate to a stream or byte array:
+
+    ```csharp
+    // Save to a file path
+    document.GeneratePdf("output.pdf");
+
+    // Return as byte array
+    byte[] bytes = document.GeneratePdf();
+
+    // Write to a stream
+    document.GeneratePdf(myStream);
+    ```
+
+    <Tip>
+      During development, use `.GeneratePdfAndShow()` instead. It generates the PDF to a temporary file and immediately opens it with your default PDF viewer — no file path needed.
+
+      ```csharp
+      Document.Create(container => { ... })
+          .GeneratePdfAndShow();
+      ```
+    </Tip>
+  </Step>
+</Steps>
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Document structure" icon="file-pdf" href="/concepts/document-structure">
+    Learn how pages, headers, footers, and content areas work.
+  </Card>
+  <Card title="Layout elements" icon="table-layout" href="/elements/row-column">
+    Row, Column, Table, and other layout primitives.
+  </Card>
+  <Card title="Invoice tutorial" icon="file-invoice" href="/examples/invoice-tutorial">
+    Build a real-world invoice in fewer than 250 lines of C#.
+  </Card>
+  <Card title="License setup" icon="key" href="/getting-started/license-setup">
+    Review license tiers and configure your project.
+  </Card>
+</CardGroup>

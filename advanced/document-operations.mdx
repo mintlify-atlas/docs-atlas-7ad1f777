@@ -1,0 +1,236 @@
+---
+title: "Document operations"
+description: "Post-process existing PDF files with the DocumentOperation fluent API: merge, overlay, underlay, attach files, encrypt, linearize, and save."
+---
+
+`DocumentOperation` lets you manipulate existing PDF files without regenerating them from scratch. It is powered by [qpdf](https://qpdf.readthedocs.io/) and exposes a fluent, chainable API.
+
+## Loading a file
+
+Every operation chain starts with `LoadFile`. The file must exist on disk; an optional password decrypts the input.
+
+```csharp
+var operation = DocumentOperation.LoadFile("input.pdf");
+
+// Password-protected input
+var operation = DocumentOperation.LoadFile("protected.pdf", password: "secret");
+```
+
+## Page selector syntax
+
+Several methods accept a `pageSelector` string. The following formats are supported:
+
+| Syntax | Meaning |
+|--------|---------|
+| `"1-5"` | Pages 1 through 5 |
+| `"1-z"` | Page 1 through the last page |
+| `"2,4,6"` | Pages 2, 4, and 6 (comma-separated list) |
+| `"z"` | Last page only |
+| `"3-z"` | Page 3 through the last page |
+
+Page numbers are 1-indexed. `z` is a shorthand for the last page of the document.
+
+## Selecting pages
+
+`TakePages` restricts which pages of the loaded document are included in the output.
+
+```csharp
+// Output pages 1–10 only
+DocumentOperation
+    .LoadFile("input.pdf")
+    .TakePages("1-10")
+    .Save("output.pdf");
+```
+
+<Note>
+If you call `MergeFile` without calling `TakePages` first, all pages of the original document are automatically included before the merged pages.
+</Note>
+
+## Merging files
+
+`MergeFile` appends pages from another PDF file. You can call it multiple times to merge several files in sequence.
+
+```csharp
+DocumentOperation
+    .LoadFile("part-one.pdf")
+    .MergeFile("part-two.pdf")
+    .MergeFile("part-three.pdf", pageSelector: "1-5")  // only first 5 pages
+    .Save("combined.pdf");
+```
+
+## Overlay and underlay
+
+`OverlayFile` draws pages from another PDF **on top of** the output pages. `UnderlayFile` draws pages **beneath** the output pages. Both accept a `LayerConfiguration` object.
+
+```csharp
+// Watermark on every page
+DocumentOperation
+    .LoadFile("document.pdf")
+    .OverlayFile(new DocumentOperation.LayerConfiguration
+    {
+        FilePath = "watermark.pdf",
+        // TargetPages: which output pages receive the overlay (default: all)
+        // SourcePages: which pages from the overlay file to use
+        // RepeatSourcePages: pages to repeat after SourcePages are exhausted
+    })
+    .Save("watermarked.pdf");
+
+// Letterhead behind content, repeating page 1 of the letterhead file
+DocumentOperation
+    .LoadFile("document.pdf")
+    .UnderlayFile(new DocumentOperation.LayerConfiguration
+    {
+        FilePath = "letterhead.pdf",
+        SourcePages = "1",
+        RepeatSourcePages = "1"
+    })
+    .Save("on-letterhead.pdf");
+```
+
+### LayerConfiguration properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `FilePath` | `string` | Path to the overlay or underlay PDF file. |
+| `TargetPages` | `string?` | Output pages that receive the layer. Defaults to all pages. |
+| `SourcePages` | `string?` | Pages from the layer file to use initially. Defaults to all pages. |
+| `RepeatSourcePages` | `string?` | Pages from the layer file to cycle after `SourcePages` are exhausted. |
+
+## Adding attachments
+
+`AddAttachment` embeds a file inside the PDF. You can attach any file type.
+
+```csharp
+DocumentOperation
+    .LoadFile("invoice.pdf")
+    .AddAttachment(new DocumentOperation.DocumentAttachment
+    {
+        FilePath = "invoice-data.xml",
+        AttachmentName = "invoice-data.xml",
+        MimeType = "application/xml",
+        Description = "Machine-readable invoice data",
+        Relationship = DocumentOperation.DocumentAttachmentRelationship.Alternative
+    })
+    .Save("invoice-with-attachment.pdf");
+```
+
+### DocumentAttachment properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `FilePath` | `string` | — | Path to the file to embed. |
+| `Key` | `string?` | File name | Internal PDF key for the attachment. |
+| `AttachmentName` | `string?` | File name | Display name shown in PDF viewers. |
+| `MimeType` | `string?` | Auto-detected | MIME type of the attachment. |
+| `Description` | `string?` | — | Description visible in some PDF viewers. |
+| `CreationDate` | `DateTime?` | File creation time | Attachment creation date. |
+| `ModificationDate` | `DateTime?` | File modified time | Attachment modification date. |
+| `Replace` | `bool` | `true` | Whether to replace an existing attachment with the same key. |
+| `Relationship` | `DocumentAttachmentRelationship?` | `null` | Relationship to the document for PDF/A-3 compliance. |
+
+### DocumentAttachmentRelationship values
+
+| Value | Description |
+|-------|-------------|
+| `Data` | Supporting data files (datasets, tables). |
+| `Source` | Source file used to create the document. |
+| `Alternative` | Alternative representation of the document (e.g., XML for e-invoicing). |
+| `Supplement` | Supplementary resources. |
+| `Unspecified` | No specific relationship. |
+
+## Extending XMP metadata
+
+`ExtendMetadata` injects custom XML into the document's XMP metadata block inside `rdf:Description`. This is required for standards such as ZUGFeRD/Factur-X.
+
+```csharp
+DocumentOperation
+    .LoadFile("invoice.pdf")
+    .ExtendMetadata("""
+        <zf:ConformanceLevel>EN 16931</zf:ConformanceLevel>
+        <zf:DocumentType>INVOICE</zf:DocumentType>
+        <zf:DocumentFileName>invoice-data.xml</zf:DocumentFileName>
+        <zf:Version>2.1</zf:Version>
+    """)
+    .Save("invoice-zugferd.pdf");
+```
+
+<Note>
+The string passed to `ExtendMetadata` must be valid XML and will be placed directly inside the `rdf:Description` element. Include any required namespace declarations on that element if needed.
+</Note>
+
+## Removing encryption
+
+`Decrypt` strips encryption from the document. Use it when you need to produce an unprotected copy.
+
+```csharp
+DocumentOperation
+    .LoadFile("protected.pdf", password: "owner-password")
+    .Decrypt()
+    .Save("unprotected.pdf");
+```
+
+`RemoveRestrictions` also removes restrictions imposed by digital signatures. It implicitly calls `Decrypt` as well. Digital signatures are invalidated but their visual appearance remains.
+
+```csharp
+DocumentOperation
+    .LoadFile("signed.pdf", password: "owner-password")
+    .RemoveRestrictions()
+    .Save("unrestricted.pdf");
+```
+
+<Warning>
+`RemoveRestrictions` invalidates any digital signatures in the document. The visual signature appearance stays, but the cryptographic validity is lost.
+</Warning>
+
+## Linearization
+
+`Linearize` restructures the PDF for web delivery. A linearized PDF allows compliant readers to display the first page before the full file has downloaded.
+
+```csharp
+DocumentOperation
+    .LoadFile("large-document.pdf")
+    .Linearize()
+    .Save("web-optimized.pdf");
+```
+
+## Saving the result
+
+`Save` executes all configured operations and writes the output to disk. It overwrites an existing file at the target path.
+
+```csharp
+operation.Save("output.pdf");
+```
+
+## Complete chained example
+
+The following example demonstrates a realistic document processing pipeline: taking selected pages, merging an appendix, applying a watermark overlay, attaching a data file, and encrypting the result.
+
+```csharp
+DocumentOperation
+    .LoadFile("report-draft.pdf")
+    .TakePages("1-z")                               // include all pages
+    .MergeFile("appendix.pdf")                      // append full appendix
+    .OverlayFile(new DocumentOperation.LayerConfiguration
+    {
+        FilePath = "watermark.pdf",
+        SourcePages = "1",
+        RepeatSourcePages = "1"                     // repeat watermark on every page
+    })
+    .AddAttachment(new DocumentOperation.DocumentAttachment
+    {
+        FilePath = "report-data.xlsx",
+        MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        Description = "Source data for all charts",
+        Relationship = DocumentOperation.DocumentAttachmentRelationship.Data
+    })
+    .Encrypt(new DocumentOperation.Encryption256Bit
+    {
+        OwnerPassword = "owner-secret",
+        UserPassword = "reader-password",
+        AllowPrinting = true,
+        AllowContentExtraction = false,
+        AllowModification = false
+    })
+    .Linearize()
+    .Save("report-final.pdf");
+```

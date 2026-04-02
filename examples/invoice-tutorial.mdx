@@ -1,0 +1,393 @@
+---
+title: 'Invoice tutorial'
+description: 'Step-by-step guide to building a professional invoice PDF with QuestPDF, covering license setup, page configuration, header with company info, line items table, totals section, and footer with page numbers.'
+---
+
+This tutorial builds a complete invoice document from scratch using QuestPDF's fluent API. Each step adds one section of the document, culminating in a working PDF you can generate with a single method call.
+
+## Prerequisites
+
+```bash
+dotnet add package QuestPDF
+```
+
+<Steps>
+
+<Step title="Set the license">
+
+Before generating any document, configure the license mode. For qualifying open-source projects use `Community`; for commercial applications use `Professional` or `Enterprise`.
+
+```csharp Program.cs
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
+```
+
+<Note>
+See the [QuestPDF licensing page](https://www.questpdf.com/license/) to confirm which tier applies to your project.
+</Note>
+
+</Step>
+
+<Step title="Define your data models">
+
+Create plain C# models that hold all invoice data. QuestPDF is data-agnostic — you can fetch these from a database, API, or in-memory object.
+
+```csharp InvoiceModels.cs
+public class InvoiceModel
+{
+    public string InvoiceNumber { get; set; }
+    public DateTime IssueDate { get; set; }
+    public DateTime DueDate { get; set; }
+
+    public Address SellerAddress { get; set; }
+    public Address CustomerAddress { get; set; }
+
+    public List<OrderItem> Items { get; set; }
+    public string Comments { get; set; }
+}
+
+public class Address
+{
+    public string CompanyName { get; set; }
+    public string Street { get; set; }
+    public string City { get; set; }
+    public string State { get; set; }
+    public string Email { get; set; }
+    public string Phone { get; set; }
+}
+
+public class OrderItem
+{
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+    public int Quantity { get; set; }
+}
+```
+
+</Step>
+
+<Step title="Implement IDocument and configure the page">
+
+Implement `IDocument` to give QuestPDF access to your metadata, settings, and layout. The `Compose` method is the entry point called during generation.
+
+```csharp InvoiceDocument.cs
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+public class InvoiceDocument : IDocument
+{
+    private InvoiceModel Model { get; }
+
+    public InvoiceDocument(InvoiceModel model) => Model = model;
+
+    public DocumentMetadata GetMetadata() => new DocumentMetadata
+    {
+        Title = $"Invoice {Model.InvoiceNumber}"
+    };
+
+    public DocumentSettings GetSettings() => DocumentSettings.Default;
+
+    public void Compose(IDocumentContainer container)
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.MarginHorizontal(50);
+            page.MarginVertical(40);
+            page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Lato));
+
+            page.Header().Element(ComposeHeader);
+            page.Content().Element(ComposeContent);
+            page.Footer().Element(ComposeFooter);
+        });
+    }
+}
+```
+
+</Step>
+
+<Step title="Build the header with company info">
+
+The header renders on every page. Use `ShowOnce()` to display detailed address blocks and the divider rule only on the first page. The title row appears on every page.
+
+```csharp InvoiceDocument.cs
+private void ComposeHeader(IContainer container)
+{
+    container.Column(column =>
+    {
+        // Title row — visible on every page
+        column.Item().Row(row =>
+        {
+            row.RelativeItem().Column(col =>
+            {
+                col.Item()
+                    .Text($"Invoice #{Model.InvoiceNumber}")
+                    .FontSize(20).Bold().FontColor(Colors.Blue.Darken3);
+
+                col.Item().Text(text =>
+                {
+                    text.Span("Issue date: ").SemiBold();
+                    text.Span(Model.IssueDate.ToString("d"));
+                });
+
+                col.Item().Text(text =>
+                {
+                    text.Span("Due date: ").SemiBold();
+                    text.Span(Model.DueDate.ToString("d"));
+                });
+            });
+
+            // Embed a logo from a file path, byte array, or stream
+            row.ConstantItem(100).Image("Resources/logo.png");
+        });
+
+        // Divider and address block — first page only
+        column.Item().ShowOnce()
+            .PaddingVertical(15)
+            .Border(1f).BorderColor(Colors.Grey.Lighten1)
+            .ExtendHorizontal();
+
+        column.Item().ShowOnce().Row(row =>
+        {
+            row.RelativeItem().Column(col =>
+            {
+                col.Item().Text("From:").SemiBold();
+                ComposeAddress(col, Model.SellerAddress);
+            });
+
+            row.ConstantItem(50);
+
+            row.RelativeItem().Column(col =>
+            {
+                col.Item().Text("To:").SemiBold();
+                ComposeAddress(col, Model.CustomerAddress);
+            });
+        });
+    });
+}
+
+private static void ComposeAddress(ColumnDescriptor column, Address address)
+{
+    column.Item().Text(address.CompanyName).SemiBold();
+    column.Item().Text(address.Street);
+    column.Item().Text($"{address.City}, {address.State}");
+    column.Item().Text(address.Email);
+    column.Item().Text(address.Phone);
+}
+```
+
+</Step>
+
+<Step title="Build the line items table with Column/RelativeColumn">
+
+Use `table.Header()` for the repeating column-header row. Mix `ConstantColumn` (fixed pixels) and `RelativeColumn` (proportional width) to control how space is distributed.
+
+```csharp InvoiceDocument.cs
+private void ComposeTable(IContainer container)
+{
+    container.Table(table =>
+    {
+        table.ColumnsDefinition(columns =>
+        {
+            columns.ConstantColumn(25);   // row number
+            columns.RelativeColumn(3);    // product name — 3× wider than others
+            columns.RelativeColumn();     // unit price
+            columns.RelativeColumn();     // quantity
+            columns.RelativeColumn();     // total
+        });
+
+        table.Header(header =>
+        {
+            header.Cell().Element(HeaderCell).Text("#");
+            header.Cell().Element(HeaderCell).Text("Product");
+            header.Cell().Element(HeaderCell).AlignRight().Text("Unit price");
+            header.Cell().Element(HeaderCell).AlignRight().Text("Quantity");
+            header.Cell().Element(HeaderCell).AlignRight().Text("Total");
+
+            static IContainer HeaderCell(IContainer c) =>
+                c.Background(Colors.Grey.Lighten3)
+                 .BorderBottom(1).BorderColor(Colors.Grey.Medium)
+                 .PaddingVertical(5).PaddingHorizontal(10);
+        });
+
+        foreach (var (item, index) in Model.Items.Select((x, i) => (x, i)))
+        {
+            var background = index % 2 == 0 ? Colors.White : Colors.Grey.Lighten5;
+
+            table.Cell().Element(BodyCell).Text($"{index + 1}");
+            table.Cell().Element(BodyCell).Text(item.Name);
+            table.Cell().Element(BodyCell).AlignRight().Text($"${item.Price:F2}");
+            table.Cell().Element(BodyCell).AlignRight().Text($"{item.Quantity}");
+            table.Cell().Element(BodyCell).AlignRight()
+                .Text($"${item.Price * item.Quantity:F2}");
+
+            IContainer BodyCell(IContainer c) =>
+                c.Background(background).PaddingVertical(5).PaddingHorizontal(10);
+        }
+    });
+}
+```
+
+<Tip>
+Cells inside `table.Header()` repeat automatically at the top of every new page when the table overflows. No extra configuration is needed.
+</Tip>
+
+</Step>
+
+<Step title="Add the totals section">
+
+Render subtotal, tax, and grand total right-aligned below the table using a narrow two-column table:
+
+```csharp InvoiceDocument.cs
+private void ComposeTotals(IContainer container)
+{
+    var subtotal = Model.Items.Sum(x => x.Price * x.Quantity);
+    var tax = subtotal * 0.23m;
+    var total = subtotal + tax;
+
+    container.PaddingTop(10).Column(column =>
+    {
+        column.Spacing(4);
+
+        column.Item().Row(row =>
+        {
+            row.RelativeItem();
+            row.ConstantItem(120).Text("Subtotal:").SemiBold();
+            row.ConstantItem(80).AlignRight().Text($"${subtotal:F2}");
+        });
+
+        column.Item().Row(row =>
+        {
+            row.RelativeItem();
+            row.ConstantItem(120).Text("Tax (23%):").SemiBold();
+            row.ConstantItem(80).AlignRight().Text($"${tax:F2}");
+        });
+
+        column.Item()
+            .BorderTop(1).BorderColor(Colors.Grey.Medium)
+            .PaddingTop(4)
+            .Row(row =>
+            {
+                row.RelativeItem();
+                row.ConstantItem(120).Text("Total:").Bold().FontSize(12);
+                row.ConstantItem(80).AlignRight()
+                    .Text($"${total:F2}").Bold().FontSize(12);
+            });
+    });
+}
+```
+
+</Step>
+
+<Step title="Wire up content and add the footer with page numbers">
+
+`ComposeContent` assembles the address block, table, totals, and optional comments. The footer uses `CurrentPageNumber()` and `TotalPages()` to inject automatic pagination.
+
+```csharp InvoiceDocument.cs
+private void ComposeContent(IContainer container)
+{
+    container.PaddingVertical(20).Column(column =>
+    {
+        column.Spacing(20);
+
+        column.Item().Element(ComposeTable);
+        column.Item().Element(ComposeTotals);
+
+        if (!string.IsNullOrWhiteSpace(Model.Comments))
+        {
+            column.Item().Column(c =>
+            {
+                c.Item().Text("Comments").SemiBold();
+                c.Item().Text(Model.Comments);
+            });
+        }
+    });
+}
+
+private void ComposeFooter(IContainer container)
+{
+    container.AlignCenter().Text(text =>
+    {
+        text.Span("Page ");
+        text.CurrentPageNumber();
+        text.Span(" of ");
+        text.TotalPages();
+    });
+}
+```
+
+</Step>
+
+<Step title="Generate the PDF">
+
+Instantiate `InvoiceDocument` with your data and call `GeneratePdf`:
+
+```csharp Program.cs
+var model = new InvoiceModel
+{
+    InvoiceNumber = "2024-001",
+    IssueDate = DateTime.Today,
+    DueDate = DateTime.Today.AddDays(30),
+    SellerAddress = new Address
+    {
+        CompanyName = "Acme Corp",
+        Street = "123 Main St",
+        City = "Springfield", State = "IL",
+        Email = "sales@acme.com", Phone = "+1 555-0100"
+    },
+    CustomerAddress = new Address
+    {
+        CompanyName = "Widget Co",
+        Street = "456 Oak Ave",
+        City = "Shelbyville", State = "TN",
+        Email = "ap@widget.co", Phone = "+1 555-0200"
+    },
+    Items =
+    [
+        new() { Name = "Professional services", Price = 150.00m, Quantity = 8 },
+        new() { Name = "Hosting (annual)",       Price =  99.00m, Quantity = 1 },
+        new() { Name = "Support plan",           Price =  49.00m, Quantity = 12 },
+    ],
+    Comments = "Payment due within 30 days. Reference invoice number on transfer."
+};
+
+new InvoiceDocument(model).GeneratePdf("invoice.pdf");
+```
+
+To preview the document without writing to disk, use `ShowInCompanion()` during development:
+
+```csharp
+new InvoiceDocument(model).ShowInCompanion();
+```
+
+</Step>
+
+</Steps>
+
+## Key concepts recap
+
+<CardGroup cols={2}>
+  <Card title="IDocument interface" icon="file">
+    Implement `GetMetadata()`, `GetSettings()`, and `Compose()` to give QuestPDF full control over document lifecycle.
+  </Card>
+  <Card title="Column width mixing" icon="table">
+    `ConstantColumn(px)` allocates a fixed width; `RelativeColumn(weight)` distributes remaining space proportionally across all relative columns.
+  </Card>
+  <Card title="Repeating table headers" icon="arrow-up">
+    Content placed inside `table.Header()` is automatically repeated at the top of every page the table spans.
+  </Card>
+  <Card title="ShowOnce" icon="eye">
+    Apply `.ShowOnce()` to any element to render it only on the first page — ideal for detailed address blocks or introductory banners.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Report example" icon="file-lines" href="/examples/report-example">
+    Build a multi-page report with sections, a table of contents, and photo grids.
+  </Card>
+  <Card title="Tables and grids" icon="table" href="/examples/tables-grids">
+    Column spans, row spans, repeating headers, and conditional cell styling.
+  </Card>
+</CardGroup>

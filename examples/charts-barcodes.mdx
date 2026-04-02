@@ -1,0 +1,343 @@
+---
+title: 'Charts and barcodes'
+description: 'Embed dynamic charts, EAN-8 barcodes, QR codes, and custom SkiaSharp drawings in QuestPDF documents using the SVG canvas and rasterized canvas APIs.'
+---
+
+QuestPDF does not bundle a charting or barcode library. Instead it exposes two canvas integration points — `.Svg()` for vector content and the SkiaSharp canvas API for direct drawing — so you can plug in any library that produces an SVG string or draws on an `SKCanvas`.
+
+## SkiaSharp canvas
+
+QuestPDF integrates with SkiaSharp through its built-in `.Svg(callback)` and `.Image(callback)` methods. Install SkiaSharp alongside QuestPDF:
+
+```bash
+dotnet add package QuestPDF
+dotnet add package SkiaSharp
+```
+
+QuestPDF exposes two canvas integration points directly on `IContainer`:
+
+| QuestPDF method | Output | Best for |
+|---|---|---|
+| `.Svg(size => svgString)` | Scalable vector (SVG) | Line art, diagrams, clock faces |
+| `.Image(payload => bytes)` | Raster PNG embedded in PDF | Bitmap processing, drop-shadow effects |
+
+The examples below use small helper extension methods that wrap these APIs for convenience. You can copy them into your project:
+
+```csharp SkiaSharpHelpers.cs
+using System.Text;
+using QuestPDF.Fluent;
+using QuestPDF.Infrastructure;
+using SkiaSharp;
+
+public static class SkiaSharpHelpers
+{
+    public static void SkiaSharpSvgCanvas(this IContainer container, Action<SKCanvas, Size> drawOnCanvas)
+    {
+        container.Svg(size =>
+        {
+            using var stream = new MemoryStream();
+            using (var canvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
+                drawOnCanvas(canvas, size);
+            return Encoding.UTF8.GetString(stream.ToArray());
+        });
+    }
+
+    public static void SkiaSharpRasterizedCanvas(this IContainer container, Action<SKCanvas, ImageSize> drawOnCanvas)
+    {
+        container.Image(payload =>
+        {
+            using var bitmap = new SKBitmap(payload.ImageSize.Width, payload.ImageSize.Height);
+            using (var canvas = new SKCanvas(bitmap))
+                drawOnCanvas(canvas, payload.ImageSize);
+            return bitmap.Encode(SKEncodedImageFormat.Png, 100).ToArray();
+        });
+    }
+}
+```
+
+### SVG canvas: analog clock face
+
+This example draws a complete analog clock using SkiaSharp primitives. The canvas is vector-based so the clock remains sharp at any PDF zoom level.
+
+```csharp SkiaSharpIntegrationExamples.cs
+page.Content()
+    .Width(300)
+    .Height(300)
+    .SkiaSharpSvgCanvas((canvas, size) =>
+    {
+        var centerX = size.Width / 2;
+        var centerY = size.Height / 2;
+        var radius = Math.Min(centerX, centerY);
+
+        // Clock face background
+        using var facePaint = new SKPaint
+        {
+            Color = new SKColor(Colors.Blue.Lighten4)
+        };
+        canvas.DrawCircle(centerX, centerY, radius, facePaint);
+
+        // Hour tick marks
+        using var tickPaint = new SKPaint
+        {
+            Color = new SKColor(Colors.Blue.Darken4),
+            StrokeWidth = 4,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        canvas.Save();
+        canvas.Translate(centerX, centerY);
+
+        foreach (var i in Enumerable.Range(0, 12))
+        {
+            canvas.DrawLine(
+                new SKPoint(0, radius * 0.85f),
+                new SKPoint(0, radius * 0.95f),
+                tickPaint);
+            canvas.RotateDegrees(30);
+        }
+
+        canvas.Restore();
+
+        // Minute hand
+        using var minuteHandPaint = new SKPaint
+        {
+            Color = new SKColor(Colors.Blue.Darken2),
+            StrokeWidth = 4,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        // Hour hand
+        using var hourHandPaint = new SKPaint
+        {
+            Color = new SKColor(Colors.Blue.Darken4),
+            StrokeWidth = 8,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        canvas.Translate(centerX, centerY);
+
+        canvas.Save();
+        canvas.RotateDegrees(6 * DateTime.Now.Minute);
+        canvas.DrawLine(new SKPoint(0, 0), new SKPoint(0, -radius * 0.7f), minuteHandPaint);
+        canvas.Restore();
+
+        canvas.Save();
+        canvas.RotateDegrees(30 * DateTime.Now.Hour + DateTime.Now.Minute / 2);
+        canvas.DrawLine(new SKPoint(0, 0), new SKPoint(0, -radius * 0.5f), hourHandPaint);
+        canvas.Restore();
+    });
+```
+
+### Rasterized canvas: photo with drop shadow
+
+Use `.SkiaSharpRasterizedCanvas()` when you need raster-only effects such as Gaussian blurs or drop shadows. The content is embedded as a PNG image in the PDF.
+
+```csharp SkiaSharpIntegrationExamples.cs
+page.Content()
+    .Padding(25)
+    .SkiaSharpRasterizedCanvas((canvas, size) =>
+    {
+        // Extra padding leaves room for the shadow to bleed
+        const float padding = 25;
+        canvas.Translate(padding, padding);
+
+        using var bitmap = SKBitmap.Decode("Resources/landscape.jpg");
+
+        var targetBitmapSize = new SKSize(
+            size.Width - 2 * padding,
+            size.Height - 2 * padding);
+
+        var scale = Math.Min(
+            targetBitmapSize.Width / bitmap.Width,
+            targetBitmapSize.Height / bitmap.Height);
+
+        canvas.Scale(scale);
+
+        var drawingArea = new SKRoundRect(
+            new SKRect(0, 0, bitmap.Width, bitmap.Height), 32, 32);
+
+        // Drop shadow
+        using var dropShadowFilter =
+            SKImageFilter.CreateDropShadow(8, 8, 16, 16, SKColors.Black);
+        using var paint = new SKPaint { ImageFilter = dropShadowFilter };
+        canvas.DrawRoundRect(drawingArea, paint);
+
+        // Image with rounded corners
+        canvas.ClipRoundRect(drawingArea, antialias: true);
+        canvas.DrawBitmap(bitmap, SKPoint.Empty);
+    });
+```
+
+## EAN-8 barcode via ZXing.Net
+
+[ZXing.Net](https://github.com/micjahn/ZXing.Net) encodes barcode data and renders it as SVG. Pass the resulting SVG string to the `.Svg()` size-callback overload.
+
+```bash
+dotnet add package ZXing.Net
+```
+
+```csharp BarcodeExamples.cs
+using ZXing;
+using ZXing.OneD;
+using ZXing.Rendering;
+
+row.AutoItem()
+    .Background(Colors.White)
+    .AlignCenter()
+    .AlignMiddle()
+    .Width(200)
+    .Height(75)
+    .Svg(size =>
+    {
+        var content = productId.ToString("D7");
+
+        var writer = new EAN8Writer();
+        var eanCode = writer.encode(
+            content,
+            BarcodeFormat.EAN_8,
+            (int)size.Width,
+            (int)size.Height);
+
+        var renderer = new SvgRenderer { FontName = "Lato", FontSize = 16 };
+        return renderer.Render(eanCode, BarcodeFormat.EAN_8, content).Content;
+    });
+```
+
+A complete product-card example that combines descriptive text with the barcode in a single `Row`:
+
+```csharp BarcodeExamples.cs
+page.Content()
+    .Background(Colors.Grey.Lighten3)
+    .Padding(25)
+    .Row(row =>
+    {
+        var productId = Random.Shared.NextInt64() % 10_000_000;
+
+        row.Spacing(20);
+
+        row.RelativeItem().Text(text =>
+        {
+            text.ParagraphSpacing(10);
+
+            text.Span("Product ID: ").Bold();
+            text.Line(productId.ToString("D7"));
+
+            text.Span("Name: ").Bold();
+            text.Line(Placeholders.Label());
+
+            text.Span("Description: ").Bold();
+            text.Span(Placeholders.Sentence());
+        });
+
+        row.AutoItem()
+            .Background(Colors.White)
+            .AlignCenter().AlignMiddle()
+            .Width(200).Height(75)
+            .Svg(size =>
+            {
+                var content = productId.ToString("D7");
+                var writer = new EAN8Writer();
+                var eanCode = writer.encode(content, BarcodeFormat.EAN_8,
+                    (int)size.Width, (int)size.Height);
+                var renderer = new SvgRenderer { FontName = "Lato", FontSize = 16 };
+                return renderer.Render(eanCode, BarcodeFormat.EAN_8, content).Content;
+            });
+    });
+```
+
+## QR code via ZXing.Net
+
+```csharp BarcodeExamples.cs
+using ZXing.QrCode;
+
+const string url = "https://en.wikipedia.org/wiki/Algorithm";
+
+row.ConstantItem(5, Unit.Centimetre)
+    .AspectRatio(1)
+    .Background(Colors.White)
+    .Svg(size =>
+    {
+        var writer = new QRCodeWriter();
+        var qrCode = writer.encode(
+            url,
+            BarcodeFormat.QR_CODE,
+            (int)size.Width,
+            (int)size.Height);
+
+        var renderer = new SvgRenderer { FontName = "Lato" };
+        return renderer.Render(qrCode, BarcodeFormat.EAN_13, null).Content;
+    });
+```
+
+A complete QR code layout alongside descriptive text:
+
+```csharp BarcodeExamples.cs
+page.Content()
+    .Background(Colors.Grey.Lighten3)
+    .Padding(25)
+    .Row(row =>
+    {
+        const string url = "https://en.wikipedia.org/wiki/Algorithm";
+
+        row.Spacing(20);
+
+        row.RelativeItem()
+            .AlignMiddle()
+            .Text(text =>
+            {
+                text.Justify();
+                text.Span("In mathematics and computer science, ");
+                text.Span("an algorithm").Bold().BackgroundColor(Colors.White);
+                text.Span(" is a finite sequence of mathematically rigorous instructions. ");
+                text.Hyperlink("Learn more", url).Underline().FontColor(Colors.Blue.Darken2);
+            });
+
+        row.ConstantItem(5, Unit.Centimetre)
+            .AspectRatio(1)
+            .Background(Colors.White)
+            .Svg(size =>
+            {
+                var writer = new QRCodeWriter();
+                var qrCode = writer.encode(url, BarcodeFormat.QR_CODE,
+                    (int)size.Width, (int)size.Height);
+                var renderer = new SvgRenderer { FontName = "Lato" };
+                return renderer.Render(qrCode, BarcodeFormat.EAN_13, null).Content;
+            });
+    });
+```
+
+<Note>
+Both `EAN8Writer` and `QRCodeWriter` use `SvgRenderer`, which produces crisp vector output regardless of the DPI setting on `DocumentSettings`. Use `.Svg()` rather than `.Image()` when the library supports SVG output to keep file sizes small.
+</Note>
+
+## Required packages
+
+<AccordionGroup>
+  <Accordion title="SkiaSharp integration">
+
+```bash
+dotnet add package QuestPDF.SkiaSharpIntegration
+```
+
+Provides `.SkiaSharpSvgCanvas()` and `.SkiaSharpRasterizedCanvas()` extension methods on `IContainer`. Also re-exports the `SKCanvas`, `SKPaint`, and `SKSize` types so you do not need a separate SkiaSharp reference in most cases.
+
+  </Accordion>
+  <Accordion title="ZXing.Net barcodes and QR codes">
+
+```bash
+dotnet add package ZXing.Net
+```
+
+Provides `EAN8Writer`, `QRCodeWriter`, `SvgRenderer`, and all `BarcodeFormat` values.
+
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Tables and grids" icon="table" href="/examples/tables-grids">
+    Layout patterns for complex tables including spans and repeating headers.
+  </Card>
+  <Card title="RTL and multilingual" icon="language" href="/examples/rtl-multilingual">
+    Right-to-left content direction for Arabic, Hebrew, and mixed documents.
+  </Card>
+</CardGroup>

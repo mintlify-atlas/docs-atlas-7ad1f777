@@ -1,0 +1,355 @@
+---
+title: 'Accessibility and PDF/UA'
+description: 'Create screen-reader-friendly PDFs with QuestPDF semantic tags, SemanticTable auto-tagging, PDF/UA-1 and PDF/A conformance settings, and correct document metadata.'
+---
+
+QuestPDF supports PDF/UA-1 (ISO 14289-1) through semantic tagging extension methods and the `PDFUA_Conformance` setting on `DocumentSettings`. Semantic tags build the logical structure tree that screen readers and assistive technology use to interpret document content.
+
+## Enable PDF/UA conformance
+
+Set `PDFUA_Conformance` in `DocumentSettings`. You can combine it with `PDFA_Conformance` when you also need archival compliance.
+
+```csharp AccessibilityExamples.cs
+Document
+    .Create(document => { /* ... */ })
+    .WithMetadata(new DocumentMetadata
+    {
+        Language = "en-US",
+        Title = "Accessibility Test",
+        Subject = "This document shows how easy it is to create accessible PDF documents with QuestPDF"
+    })
+    .WithSettings(new DocumentSettings
+    {
+        PDFA_Conformance = PDFA_Conformance.PDFA_3A,
+        PDFUA_Conformance = PDFUA_Conformance.PDFUA_1
+    })
+    .GeneratePdf("accessibility-minimal-example.pdf");
+```
+
+<Warning>
+The `PDFUA_Conformance` setting makes the document non-reproducible because it embeds a generation timestamp in the structure tree. Two runs with identical input will produce different byte sequences.
+</Warning>
+
+## Available conformance levels
+
+<Tabs>
+  <Tab title="PDF/UA">
+
+| Value | Standard |
+|---|---|
+| `PDFUA_Conformance.None` | No accessibility conformance (default) |
+| `PDFUA_Conformance.PDFUA_1` | ISO 14289-1 — requires a tagged PDF with logical structure |
+
+  </Tab>
+  <Tab title="PDF/A">
+
+| Value | Standard |
+|---|---|
+| `PDFA_Conformance.None` | No archival conformance (default) |
+| `PDFA_Conformance.PDFA_2A` | ISO 19005-2 Level A |
+| `PDFA_Conformance.PDFA_2B` | ISO 19005-2 Level B |
+| `PDFA_Conformance.PDFA_2U` | ISO 19005-2 Level U |
+| `PDFA_Conformance.PDFA_3A` | ISO 19005-3 Level A |
+| `PDFA_Conformance.PDFA_3B` | ISO 19005-3 Level B |
+| `PDFA_Conformance.PDFA_3U` | ISO 19005-3 Level U |
+
+  </Tab>
+</Tabs>
+
+## Semantic tagging extension methods
+
+QuestPDF provides semantic extension methods that wrap a container in the corresponding PDF structure element. Insert them in the fluent chain between layout and content methods.
+
+### Headings (H1–H6)
+
+```csharp AccessibilityExamples.cs
+page.Header()
+    .PaddingBottom(15)
+    .SemanticHeader1()                   // maps to <H1> structure element
+    .Text("Accessibility Test Document")
+    .FontColor(Colors.Blue.Darken3)
+    .FontSize(24)
+    .Bold();
+```
+
+Available methods: `SemanticHeader1()` through `SemanticHeader6()`.
+
+### Sections
+
+```csharp AccessibilityExamples.cs
+column.Item()
+    .SemanticSection()                   // maps to <Sect> structure element
+    .Column(column =>
+    {
+        column.Item()
+            .PaddingBottom(10)
+            .SemanticHeader2()
+            .Text("Section with text content")
+            .FontColor(Colors.Blue.Darken1)
+            .FontSize(16);
+
+        column.Item()
+            .Text(Placeholders.Paragraphs())
+            .FontSize(12)
+            .ParagraphSpacing(8);
+    });
+```
+
+### Images with alternative text
+
+```csharp AccessibilityExamples.cs
+column.Item()
+    .Width(250)
+    .SemanticImage("Image showing a laptop")   // maps to <Figure> with Alt attribute
+    .Image("Resources/product.jpg");
+```
+
+### Paragraphs
+
+```csharp SemanticExamples.cs
+column.Item()
+    .SemanticParagraph()                 // maps to <P> structure element
+    .Text(text =>
+    {
+        text.Span(term.Term).Bold();
+        text.Span(" - ");
+        text.Span(term.Description);
+    });
+```
+
+## Minimal accessible document
+
+This example produces a fully tagged PDF/UA-1 compliant document with a heading hierarchy, two sections, and an image with alt text:
+
+```csharp AccessibilityExamples.cs
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A5);
+            page.Margin(30);
+
+            page.Header()
+                .PaddingBottom(15)
+                .SemanticHeader1()
+                .Text("Accessibility Test Document")
+                .FontColor(Colors.Blue.Darken3)
+                .FontSize(24)
+                .Bold();
+
+            page.Content()
+                .Column(column =>
+                {
+                    column.Spacing(20);
+
+                    column.Item()
+                        .SemanticSection()
+                        .Column(column =>
+                        {
+                            column.Item()
+                                .PaddingBottom(10)
+                                .SemanticHeader2()
+                                .Text("Section with text content")
+                                .FontColor(Colors.Blue.Darken1)
+                                .FontSize(16);
+
+                            column.Item()
+                                .Text(Placeholders.Paragraphs())
+                                .FontSize(12)
+                                .ParagraphSpacing(8);
+                        });
+
+                    column.Item()
+                        .PreventPageBreak()
+                        .SemanticSection()
+                        .Column(column =>
+                        {
+                            column.Item()
+                                .PaddingBottom(10)
+                                .SemanticHeader2()
+                                .Text("Section with image")
+                                .FontColor(Colors.Blue.Darken1)
+                                .FontSize(16);
+
+                            column.Item()
+                                .Width(250)
+                                .SemanticImage("Image showing a laptop")
+                                .Image("Resources/product.jpg");
+                        });
+                });
+        });
+    })
+    .WithMetadata(new DocumentMetadata
+    {
+        Language = "en-US",
+        Title = "Accessibility Test",
+        Subject = "This document shows how easy it is to create accessible PDF documents with QuestPDF"
+    })
+    .WithSettings(new DocumentSettings
+    {
+        PDFA_Conformance = PDFA_Conformance.PDFA_3A,
+        PDFUA_Conformance = PDFUA_Conformance.PDFUA_1
+    })
+    .GeneratePdf("accessibility-minimal-example.pdf");
+```
+
+## Semantic table tagging
+
+Wrap a table container with `.SemanticTable()` before the `.Table()` call. QuestPDF automatically maps cells inside `table.Header()` to `<TH>` elements and body cells to `<TD>` elements.
+
+```csharp SemanticExamples.cs
+page.Content()
+    .Border(1)
+    .BorderColor(Colors.Grey.Lighten1)
+    .SemanticTable()                     // wraps the table in a <Table> structure element
+    .Table(table =>
+    {
+        table.ColumnsDefinition(columns =>
+        {
+            columns.RelativeColumn();
+            columns.ConstantColumn(80);
+            columns.ConstantColumn(80);
+            columns.ConstantColumn(80);
+            columns.ConstantColumn(80);
+        });
+
+        table.Header(header =>
+        {
+            // Cells inside header become <TH> elements
+            header.Cell().RowSpan(2).Element(CellStyle).ExtendHorizontal().AlignLeft()
+                .Text("Document type").Bold();
+
+            header.Cell().ColumnSpan(2).Element(CellStyle).Text("Inches").Bold();
+            header.Cell().ColumnSpan(2).Element(CellStyle).Text("Points").Bold();
+
+            header.Cell().Element(CellStyle).Text("Width");
+            header.Cell().Element(CellStyle).Text("Height");
+            header.Cell().Element(CellStyle).Text("Width");
+            header.Cell().Element(CellStyle).Text("Height");
+
+            IContainer CellStyle(IContainer container) =>
+                DefaultCellStyle(container, Colors.Grey.Lighten3);
+        });
+
+        foreach (var page in pageSizes)
+        {
+            // Body cells become <TD> elements
+            table.Cell().Element(CellStyle).ExtendHorizontal().AlignLeft().Text(page.name);
+            table.Cell().Element(CellStyle).Text(page.width);
+            table.Cell().Element(CellStyle).Text(page.height);
+            table.Cell().Element(CellStyle).Text(page.width * inchesToPoints);
+            table.Cell().Element(CellStyle).Text(page.height * inchesToPoints);
+
+            IContainer CellStyle(IContainer container) =>
+                DefaultCellStyle(container, Colors.White).ShowOnce();
+        }
+    });
+```
+
+## Nested heading hierarchy for long documents
+
+For documents with deep sectioning, nest `SemanticSection` blocks and increment the heading level at each depth:
+
+```csharp SemanticExamples.cs
+foreach (var category1 in categories)
+{
+    column.Item()
+        .SemanticSection()
+        .EnsureSpace(100)
+        .Column(column =>
+        {
+            column.Spacing(24);
+
+            column.Item()
+                .PaddingBottom(8)
+                .SemanticHeader1()
+                .Text(category1.Category)
+                .FontSize(24).FontColor(Colors.Blue.Darken4).Bold();
+
+            foreach (var category2 in category1.Terms)
+            {
+                column.Item()
+                    .SemanticSection()
+                    .EnsureSpace(100)
+                    .Column(column =>
+                    {
+                        column.Spacing(8);
+
+                        column.Item()
+                            .PaddingBottom(8)
+                            .SemanticHeader2()
+                            .Text(category2.Category)
+                            .FontSize(20).FontColor(Colors.Blue.Darken2).Bold();
+
+                        foreach (var category3 in category2.Terms)
+                        {
+                            column.Item()
+                                .SemanticSection()
+                                .EnsureSpace(100)
+                                .Column(column =>
+                                {
+                                    column.Spacing(8);
+
+                                    column.Item()
+                                        .PaddingBottom(8)
+                                        .SemanticHeader3()
+                                        .Text(category3.Category)
+                                        .FontSize(16).FontColor(Colors.Blue.Medium).Bold();
+
+                                    foreach (var term in category3.Terms)
+                                    {
+                                        column.Item()
+                                            .SemanticParagraph()
+                                            .Text(text =>
+                                            {
+                                                text.Span(term.Term).Bold();
+                                                text.Span(" - ");
+                                                text.Span(term.Description);
+                                            });
+                                    }
+                                });
+                        }
+                    });
+            }
+        });
+
+    column.Item().PageBreak();
+}
+```
+
+## Screen reader checklist
+
+<AccordionGroup>
+  <Accordion title="Document language">
+    Always set `DocumentMetadata.Language` to a BCP 47 tag (e.g. `"en-US"`, `"ar-SA"`). Screen readers use this to select the correct text-to-speech voice.
+
+```csharp
+.WithMetadata(new DocumentMetadata { Language = "en-US" })
+```
+
+  </Accordion>
+  <Accordion title="Document title">
+    Set `DocumentMetadata.Title`. Screen readers announce the document title when the user opens the file.
+
+```csharp
+.WithMetadata(new DocumentMetadata { Title = "Annual Report 2025" })
+```
+
+  </Accordion>
+  <Accordion title="Image alternative text">
+    Every meaningful image must have descriptive alt text via `.SemanticImage("description")`. Purely decorative images that carry no information should be marked as artifacts to exclude them from the reading order.
+  </Accordion>
+  <Accordion title="Reading order">
+    QuestPDF derives the reading order from the order in which elements are composed. Define elements in logical reading order — top-to-bottom, then left-to-right for LTR documents — to produce a correct structure tree without manual tag reordering.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="RTL and multilingual" icon="language" href="/examples/rtl-multilingual">
+    Configure document and container content direction for Arabic, Hebrew, and mixed layouts.
+  </Card>
+  <Card title="Invoice tutorial" icon="file-invoice" href="/examples/invoice-tutorial">
+    Step-by-step guide to building a complete invoice PDF.
+  </Card>
+</CardGroup>

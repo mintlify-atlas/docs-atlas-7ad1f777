@@ -1,0 +1,425 @@
+---
+title: 'Report example'
+description: 'Build a multi-page report in QuestPDF with a repeating header, table of contents linked to named sections, per-section components, photo grids, and Roman-numeral page numbers.'
+---
+
+The QuestPDF report sample is a real-world multi-page document built from composable `IComponent` classes. This page walks through its architecture, the table of contents pattern, section components with page breaks, and the photo grid layout.
+
+## Document architecture
+
+The report is structured as a single `IDocument` implementation that delegates each visual area to smaller components:
+
+```
+StandardReport (IDocument)
+├── ComposeHeader        — title row (all pages) + metadata grid (ShowOnce)
+├── TableOfContentsTemplate (IComponent)
+│   └── SectionLink rows with dotted leader and page-range text
+├── PageBreak
+├── SectionTemplate × N (IComponent)    — one per ReportSection
+│   └── Decoration (headline) + bordered column of parts
+│       ├── ReportSectionText   → plain text cell
+│       ├── ReportSectionMap    → thumbnail image + coordinates
+│       └── ReportSectionPhotos → 3-column image grid
+├── PageBreak
+└── PhotoTemplate × N (IComponent)
+    ├── main photo + two thumbnail maps (Row)
+    └── metadata grid (date, location, comments)
+```
+
+## Data model
+
+```csharp Models.cs
+public class ReportModel
+{
+    public string Title { get; set; }
+    public byte[] LogoData { get; set; }
+    public List<ReportHeaderField> HeaderFields { get; set; }
+    public List<ReportSection> Sections { get; set; }
+    public List<ReportPhoto> Photos { get; set; }
+}
+
+public class ReportSection
+{
+    public string Title { get; set; }
+    public List<ReportSectionElement> Parts { get; set; }
+}
+
+// Polymorphic section parts
+public abstract class ReportSectionElement { public string Label { get; set; } }
+public class ReportSectionText   : ReportSectionElement { public string Text { get; set; } }
+public class ReportSectionMap    : ReportSectionElement { public Location Location { get; set; } }
+public class ReportSectionPhotos : ReportSectionElement { public int PhotoCount { get; set; } }
+
+public class ReportPhoto
+{
+    public Location Location { get; set; }
+    public DateTime? Date { get; set; }
+    public string Comments { get; set; }
+}
+```
+
+## IDocument implementation
+
+`StandardReport` wires together the page layout, the repeating header, and the content column. Page numbers are formatted as Roman numerals using a `.Format()` callback.
+
+```csharp StandardReport.cs
+using QuestPDF.Drawing;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+public class StandardReport : IDocument
+{
+    private ReportModel Model { get; }
+
+    public StandardReport(ReportModel model) => Model = model;
+
+    public DocumentMetadata GetMetadata() => new DocumentMetadata
+    {
+        Title = Model.Title
+    };
+
+    public DocumentSettings GetSettings() => DocumentSettings.Default;
+
+    public void Compose(IDocumentContainer container)
+    {
+        container.Page(page =>
+        {
+            page.DefaultTextStyle(Typography.Normal);
+            page.MarginVertical(40);
+            page.MarginHorizontal(50);
+            page.Size(PageSizes.A4);
+
+            page.Header().Element(ComposeHeader);
+            page.Content().Element(ComposeContent);
+
+            page.Footer().AlignCenter().Text(text =>
+            {
+                text.CurrentPageNumber().Format(x => x?.FormatAsRomanNumeral() ?? "-----");
+                text.Span(" / ");
+                text.TotalPages().Format(x => x?.FormatAsRomanNumeral() ?? "-----");
+            });
+        });
+    }
+}
+```
+
+<Tip>
+The `.Format()` callback on a page number text span receives a nullable `int?`. Returning a fallback string when the value is `null` prevents empty placeholders during the first layout pass.
+</Tip>
+
+## Repeating header with ShowOnce
+
+The header renders on every page. The divider rule and the metadata fields grid use `ShowOnce()` so they appear only on the first page.
+
+```csharp StandardReport.cs
+private void ComposeHeader(IContainer container)
+{
+    container.Column(column =>
+    {
+        // Title + logo — visible on every page
+        column.Item().Row(row =>
+        {
+            row.Spacing(50);
+
+            row.RelativeItem()
+                .PaddingTop(-10)
+                .Text(Model.Title)
+                .Style(Typography.Title);
+
+            row.ConstantItem(90)
+                .Hyperlink("https://www.questpdf.com")
+                .MaxHeight(30)
+                .Component<ImagePlaceholder>();
+        });
+
+        // Horizontal rule — first page only
+        column.Item().ShowOnce()
+            .PaddingVertical(15)
+            .Border(1f).BorderColor(Colors.Grey.Lighten1)
+            .ExtendHorizontal();
+
+        // Key/value metadata grid — first page only
+        column.Item().ShowOnce().Grid(grid =>
+        {
+            grid.Columns(2);
+            grid.Spacing(5);
+
+            foreach (var field in Model.HeaderFields)
+            {
+                grid.Item().Text(text =>
+                {
+                    text.Span($"{field.Label}: ").SemiBold();
+                    text.Span(field.Value);
+                });
+            }
+        });
+    });
+}
+```
+
+## Content: table of contents, sections, and photos
+
+Each section is wrapped in a `.Section(name)` call, which registers a named anchor used by the table of contents. Explicit `PageBreak()` calls separate the TOC from the content sections and the photo appendix.
+
+```csharp StandardReport.cs
+private void ComposeContent(IContainer container)
+{
+    container.PaddingVertical(20).Column(column =>
+    {
+        column.Spacing(20);
+
+        // Table of contents
+        column.Item().Component(new TableOfContentsTemplate(Model.Sections));
+        column.Item().PageBreak();
+
+        // Content sections — each registered as a named anchor
+        foreach (var section in Model.Sections)
+            column.Item()
+                .Section(section.Title)
+                .Component(new SectionTemplate(section));
+
+        // Photo appendix
+        column.Item().PageBreak();
+        column.Item().Section("Photos");
+
+        foreach (var photo in Model.Photos)
+            column.Item().Component(new PhotoTemplate(photo));
+    });
+}
+```
+
+<Note>
+`.Section(name)` registers a named anchor. The table of contents links to it using `.SectionLink(name)` and reads its page range with `BeginPageNumberOfSection` / `EndPageNumberOfSection`.
+</Note>
+
+## Table of contents component
+
+Each TOC entry is a clickable row that shows the section title, a dotted leader drawn with SkiaSharp, and the page range.
+
+```csharp TableOfContentsTemplate.cs
+public class TableOfContentsTemplate : IComponent
+{
+    private List<ReportSection> Sections { get; }
+
+    public TableOfContentsTemplate(List<ReportSection> sections) => Sections = sections;
+
+    public void Compose(IContainer container)
+    {
+        container.Decoration(decoration =>
+        {
+            decoration.Before()
+                .PaddingBottom(5)
+                .Text("Table of contents")
+                .Style(Typography.Headline);
+
+            decoration.Content().Column(column =>
+            {
+                column.Spacing(5);
+
+                for (var i = 0; i < Sections.Count; i++)
+                    column.Item().Element(c => DrawLink(c, i + 1, Sections[i].Title));
+
+                column.Item().Element(c => DrawLink(c, Sections.Count + 1, "Photos"));
+            });
+        });
+    }
+
+    private static void DrawLink(IContainer container, int number, string locationName)
+    {
+        container
+            .SectionLink(locationName)
+            .Row(row =>
+            {
+                row.ConstantItem(20).Text($"{number}.");
+                row.AutoItem().Text(locationName);
+
+                // Dotted leader line
+                row.RelativeItem()
+                    .PaddingHorizontal(2)
+                    .AlignBottom()
+                    .Height(3)
+                    .SkiaSharpRasterized((canvas, size) =>
+                    {
+                        using var paint = new SKPaint
+                        {
+                            StrokeWidth = 1,
+                            PathEffect = SKPathEffect.CreateDash(new float[] { 1, 3 }, 0),
+                        };
+
+                        canvas.Translate(0, 1);
+                        canvas.DrawLine(0, 0, size.Width, 0, paint);
+                    });
+
+                row.AutoItem().Text(text =>
+                {
+                    text.BeginPageNumberOfSection(locationName);
+                    text.Span(" - ");
+                    text.EndPageNumberOfSection(locationName);
+
+                    var lengthStyle = TextStyle.Default.FontColor(Colors.Grey.Medium);
+
+                    text.TotalPagesWithinSection(locationName)
+                        .Style(lengthStyle)
+                        .Format(x =>
+                        {
+                            var formatted = x == 1 ? "1 page long" : $"{x} pages long";
+                            return $" ({formatted})";
+                        });
+                });
+            });
+    }
+}
+```
+
+## Section component with polymorphic parts
+
+Each `ReportSection` contains a list of `ReportSectionElement` objects. The component dispatches to the correct rendering path using type-checking.
+
+```csharp SectionTemplate.cs
+public class SectionTemplate : IComponent
+{
+    public ReportSection Model { get; set; }
+
+    public SectionTemplate(ReportSection model) => Model = model;
+
+    public void Compose(IContainer container)
+    {
+        container
+            .EnsureSpace()
+            .Decoration(decoration =>
+            {
+                decoration.Before()
+                    .PaddingBottom(5)
+                    .Text(Model.Title)
+                    .Style(Typography.Headline);
+
+                decoration.Content()
+                    .Border(0.75f).BorderColor(Colors.Grey.Medium)
+                    .Column(column =>
+                    {
+                        foreach (var part in Model.Parts)
+                        {
+                            column.Item().EnsureSpace(25).Row(row =>
+                            {
+                                row.ConstantItem(150).LabelCell().Text(part.Label);
+                                var frame = row.RelativeItem().ValueCell();
+
+                                if (part is ReportSectionText text)
+                                    frame.ShowEntire().Text(text.Text);
+
+                                if (part is ReportSectionMap map)
+                                    frame.Element(x => MapElement(x, map));
+
+                                if (part is ReportSectionPhotos photos)
+                                    frame.Element(x => PhotosElement(x, photos));
+                            });
+                        }
+                    });
+            });
+    }
+
+    static void MapElement(IContainer container, ReportSectionMap model)
+    {
+        if (model.Location == null)
+        {
+            container.Text("No location provided");
+            return;
+        }
+
+        container.ShowEntire().Column(column =>
+        {
+            column.Spacing(5);
+            column.Item().MaxWidth(250).AspectRatio(4 / 3f).Component<ImagePlaceholder>();
+            column.Item().Text(model.Location.Format());
+        });
+    }
+
+    static void PhotosElement(IContainer container, ReportSectionPhotos model)
+    {
+        if (model.PhotoCount == 0)
+        {
+            container.Text("No photos").Style(Typography.Normal);
+            return;
+        }
+
+        container.Grid(grid =>
+        {
+            grid.Spacing(5);
+            grid.Columns(3);
+
+            Enumerable.Range(0, model.PhotoCount).ToList()
+                .ForEach(_ => grid.Item().AspectRatio(4 / 3f).Component<ImagePlaceholder>());
+        });
+    }
+}
+```
+
+## Centralised typography
+
+Define text styles once and reference them everywhere. Changing a single `TextStyle` propagates throughout the document.
+
+```csharp Typography.cs
+public static class Typography
+{
+    public static TextStyle Title =>
+        TextStyle.Default
+            .FontFamily(Fonts.Lato)
+            .FontColor(Colors.Blue.Darken3)
+            .FontSize(26)
+            .Black();
+
+    public static TextStyle Headline =>
+        TextStyle.Default
+            .FontFamily(Fonts.Lato)
+            .FontColor(Colors.Blue.Medium)
+            .FontSize(16)
+            .SemiBold();
+
+    public static TextStyle Normal =>
+        TextStyle.Default
+            .FontFamily(Fonts.Lato)
+            .FontColor(Colors.Black)
+            .FontSize(10)
+            .LineHeight(1.2f);
+}
+```
+
+## Different headers on the first vs. subsequent pages
+
+Use `ShowOnce()` to show an element only on the first page and `SkipOnce()` to skip it on the first page and show it on all others. This lets you build a full-bleed cover header and a compact secondary header.
+
+```csharp DifferentHeadersTemplate.cs
+private void ComposeHeader(IContainer container)
+{
+    container.Background(Colors.Grey.Lighten3).Border(1).Column(column =>
+    {
+        // Full header — first page only
+        column.Item().ShowOnce().Padding(5).AlignMiddle().Row(row =>
+        {
+            row.RelativeItem(2).AlignMiddle()
+                .Text("PRIMARY HEADER").FontColor(Colors.Grey.Darken3).FontSize(30).Bold();
+            row.RelativeItem(1).AlignRight().MinimalBox().AlignMiddle()
+                .Background(Colors.Blue.Darken2).Padding(30);
+        });
+
+        // Compact header — every page except the first
+        column.Item().SkipOnce().Padding(5).Row(row =>
+        {
+            row.RelativeItem(2)
+                .Text("SECONDARY HEADER").FontColor(Colors.Grey.Darken3).FontSize(30).Bold();
+            row.RelativeItem(1).AlignRight().MinimalBox()
+                .Background(Colors.Blue.Lighten4).Padding(15);
+        });
+    });
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Invoice tutorial" icon="file-invoice" href="/examples/invoice-tutorial">
+    Step-by-step guide to a complete invoice with line items and totals.
+  </Card>
+  <Card title="Tables and grids" icon="table" href="/examples/tables-grids">
+    Column span, row span, and repeating header patterns for complex tables.
+  </Card>
+</CardGroup>

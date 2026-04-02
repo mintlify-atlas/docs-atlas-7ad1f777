@@ -1,0 +1,94 @@
+---
+title: "Hot reload"
+description: "Use ShowInCompanion to preview your QuestPDF document live and re-render it automatically on every .NET hot-reload event."
+---
+
+Hot reload lets you edit your document code and see the result in the Companion App immediately — without stopping your application or regenerating the PDF manually. QuestPDF hooks into the .NET hot-reload pipeline so that every saved source change triggers a fresh render in the preview window.
+
+## Setup
+
+<Steps>
+  <Step title="Download and launch the Companion App">
+    Download the Companion App from [questpdf.com](https://www.questpdf.com) and start it on your machine. By default it listens on port **12500**. Keep it running while you develop.
+  </Step>
+  <Step title="Call ShowInCompanion in your application">
+    Replace your normal `GeneratePdf` call with `ShowInCompanion`. The method connects to the running Companion App and sends the initial document snapshot.
+
+    ```csharp
+    using QuestPDF.Companion;
+    using QuestPDF.Fluent;
+    using QuestPDF.Helpers;
+    using QuestPDF.Infrastructure;
+
+    var document = Document.Create(container =>
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+
+            page.Header()
+                .Text("Sales Report")
+                .SemiBold().FontSize(28).FontColor(Colors.Blue.Medium);
+
+            page.Content()
+                .PaddingVertical(1, Unit.Centimetre)
+                .Column(column =>
+                {
+                    column.Spacing(12);
+                    column.Item().Text(Placeholders.LoremIpsum());
+                });
+        });
+    });
+
+    // Connects to the Companion App and keeps the process alive
+    document.ShowInCompanion();
+    ```
+
+    To use a custom port, pass it as an argument:
+
+    ```csharp
+    document.ShowInCompanion(port: 15000);
+    ```
+
+    An async overload is also available if you need to integrate with an async host:
+
+    ```csharp
+    await document.ShowInCompanionAsync(port: 12500, cancellationToken: cts.Token);
+    ```
+  </Step>
+  <Step title="Edit your document and see the live preview">
+    With the application running and the Companion App open, edit your document code and save. The .NET hot-reload mechanism applies your changes to the running process, and the Companion App re-renders the document automatically within moments — no restart required.
+  </Step>
+</Steps>
+
+## How hot reload works
+
+`ShowInCompanion` registers a handler with `HotReloadManager`, which is wired to the .NET metadata update pipeline via the `[MetadataUpdateHandler]` assembly attribute:
+
+```csharp
+[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(HotReloadManager))]
+```
+
+When the .NET runtime applies a hot-reload update, it calls `HotReloadManager.UpdateApplication`. This raises the `UpdateApplicationRequested` event, which `ShowInCompanion` subscribes to. On each event, QuestPDF re-executes your document factory and pushes a fresh snapshot to the Companion App.
+
+## Automatic settings
+
+Calling `ShowInCompanion` or `ShowInCompanionAsync` automatically adjusts two settings for the best development experience:
+
+| Setting | Value set | Reason |
+|---|---|---|
+| `Settings.EnableCaching` | `false` | Ensures every re-render reflects the latest code changes without stale cached layouts |
+| `Settings.EnableDebugging` | `true` | Surfaces layout errors and exceptions with full detail in the Companion App |
+
+You do not need to set these manually when using the Companion App.
+
+## Limitations
+
+<Warning>
+  `MergedDocument` is not supported. If you pass a merged document to `ShowInCompanion`, a `NotSupportedException` is thrown with the message: _"The QuestPDF Companion App does not currently support merged documents. Please use the tool with a single document at a time."_
+</Warning>
+
+<Note>
+  `ShowInCompanion` and `ShowInCompanionAsync` require **.NET 6 or later**. Calling either method on an older target framework throws an exception immediately. Ensure your project targets `net6.0` or a later moniker before using the Companion integration.
+</Note>

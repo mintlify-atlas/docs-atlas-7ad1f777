@@ -1,0 +1,361 @@
+---
+title: "Text styling"
+description: "The Text() fluent API, spans, page numbers, section links, font properties, spacing, text direction, and default text style inheritance."
+---
+
+QuestPDF renders text through the `Text()` extension on `IContainer`. There are two forms: a simple string overload and a rich-content overload using a `TextDescriptor`.
+
+## Basic text
+
+```csharp
+page.Content().Text("Sample text");
+```
+
+Chain style methods directly on the return value to style the entire text block:
+
+```csharp
+page.Content()
+    .Column(column =>
+    {
+        column.Spacing(10);
+
+        column.Item()
+            .Text("Text with blue color")
+            .FontColor(Colors.Blue.Darken1);
+
+        column.Item()
+            .Text("Bold and underlined text")
+            .Bold()
+            .Underline();
+
+        column.Item()
+            .Text("Centered small text")
+            .FontSize(12)
+            .AlignCenter();
+    });
+```
+
+## Rich text with TextDescriptor
+
+Use the callback overload to mix spans, page numbers, hyperlinks, and embedded elements in a single text block.
+
+```csharp
+page.Content()
+    .Text(text =>
+    {
+        text.AlignCenter();
+
+        text.Span("The ");
+        text.Span("chemical formula").Underline();
+        text.Span(" of ");
+        text.Span("sulfuric acid").BackgroundColor(Colors.Amber.Lighten3);
+        text.Span(" is H");
+        text.Span("2").Subscript();
+        text.Span("SO");
+        text.Span("4").Subscript();
+        text.Span(".");
+    });
+```
+
+### Span()
+
+Appends a styled run of text. Each span can carry its own style, independent of other spans in the same block.
+
+```csharp
+text.Span("Each pixel consists of three sub-pixels: ");
+text.Span("red").FontColor(Colors.Red.Medium);
+text.Span(", ");
+text.Span("green").FontColor(Colors.Green.Medium);
+text.Span(" and ");
+text.Span("blue").FontColor(Colors.Blue.Medium);
+text.Span(".");
+```
+
+### Page numbers
+
+```csharp
+page.Footer()
+    .AlignCenter()
+    .Text(text =>
+    {
+        text.CurrentPageNumber();
+        text.Span(" / ");
+        text.TotalPages();
+    });
+```
+
+Apply a custom format using `.Format()`:
+
+```csharp
+text.CurrentPageNumber().Format(pageNumber =>
+{
+    const int expectedLength = 3;
+    pageNumber ??= 1;
+    return pageNumber.Value.ToString($"D{expectedLength}"); // "001", "002", ...
+});
+```
+
+Other page number methods:
+
+| Method | Description |
+|--------|-------------|
+| `CurrentPageNumber()` | Number of the current page |
+| `TotalPages()` | Total number of pages in the document |
+| `BeginPageNumberOfSection(name)` | First page of a named section |
+| `EndPageNumberOfSection(name)` | Last page of a named section |
+| `PageNumberWithinSection(name)` | Current page offset within a section |
+| `TotalPagesWithinSection(name)` | Total pages within a section |
+
+### SectionLink()
+
+Creates a clickable text that navigates to a named section within the document.
+
+```csharp
+text.SectionLink("See appendix", "appendix-section");
+```
+
+### Hyperlink()
+
+Creates a clickable text that opens an external URL.
+
+```csharp
+var hyperlinkStyle = TextStyle.Default
+    .FontColor(Colors.Blue.Medium)
+    .Underline();
+
+text.Span("Visit the ");
+text.Hyperlink("QuestPDF homepage", "https://www.questpdf.com/").Style(hyperlinkStyle);
+text.Span(" for more information.");
+```
+
+## Font properties
+
+All style methods below are available on both `TextSpanDescriptor` (returned by `Span()`) and `TextBlockDescriptor` (returned by the simple `Text(string)` overload).
+
+### FontSize
+
+```csharp
+column.Item().Text("This is small text (16pt)").FontSize(16);
+column.Item().Text("This is medium text (24pt)").FontSize(24);
+column.Item().Text("This is large text (36pt)").FontSize(36);
+```
+
+### FontFamily
+
+Pass one or more font family names. The library falls back to the next entry if a glyph is not available in the primary font.
+
+```csharp
+// Single font
+column.Item().Text("Times New Roman").FontFamily("Times New Roman");
+
+// With fallback for Arabic characters
+page.Content()
+    .Text("The Arabic word for programming is البرمجة.")
+    .FontFamily("Lato", "Noto Sans Arabic");
+```
+
+### FontColor and BackgroundColor
+
+```csharp
+text.Span("algorithm").BackgroundColor(Colors.Yellow.Lighten3).Bold();
+```
+
+```csharp
+text.Span("important").FontColor(Colors.Red.Medium);
+```
+
+### Font weight
+
+```csharp
+text.Span("bold").Bold();
+text.Span("normal").NormalWeight();
+text.Span("light").Light();
+text.Span("thin").Thin();
+```
+
+Available weight methods: `Thin()`, `ExtraLight()`, `Light()`, `NormalWeight()`, `Medium()`, `SemiBold()`, `Bold()`, `ExtraBold()`, `Black()`, `ExtraBlack()`.
+
+### Italic
+
+```csharp
+text.Span("important").Italic();
+```
+
+### Subscript and superscript
+
+```csharp
+// H₂O
+text.Span("H");
+text.Span("2").Subscript();
+text.Span("O is the chemical formula for water.");
+
+// E = mc²
+text.Span("E = mc");
+text.Span("2").Superscript();
+```
+
+## Decorations
+
+### Underline, strikethrough, and overline
+
+```csharp
+text.Span("underline").Underline().FontColor(Colors.Red.Medium);
+text.Span("strikethrough").Strikethrough().FontColor(Colors.Green.Medium);
+text.Span("overline").Overline().FontColor(Colors.Blue.Medium);
+```
+
+### Decoration style
+
+```csharp
+text.Span("solid").Underline().DecorationSolid();
+text.Span("double").Underline().DecorationDouble();
+text.Span("wavy").Underline().DecorationWavy();
+text.Span("dotted").Underline().DecorationDotted();
+text.Span("dashed").Underline().DecorationDashed();
+```
+
+### Decoration color and thickness
+
+```csharp
+text.Span("serious")
+    .Underline()
+    .DecorationWavy()
+    .DecorationColor(Colors.Red.Medium)
+    .DecorationThickness(2);
+```
+
+## Spacing
+
+### Line height
+
+A multiplier applied to the natural line height derived from the font metrics. A value of `1.0` matches the font's default; `2.0` doubles the line spacing.
+
+```csharp
+column.Item().Text(paragraph).FontSize(16).LineHeight(0.75f); // tighter
+column.Item().Text(paragraph).FontSize(16).LineHeight(1.0f);  // normal
+column.Item().Text(paragraph).FontSize(16).LineHeight(2.0f);  // double
+```
+
+### Letter spacing
+
+A factor relative to the font size. `0` is default; positive values increase spacing, negative values decrease it.
+
+```csharp
+column.Item().Text(sentence).FontSize(18).LetterSpacing(-0.08f); // condensed
+column.Item().Text(sentence).FontSize(18).LetterSpacing(0f);     // normal
+column.Item().Text(sentence).FontSize(18).LetterSpacing(0.2f);   // expanded
+```
+
+### Word spacing
+
+A factor relative to the font size applied between words.
+
+```csharp
+column.Item().Text(sentence).FontSize(16).WordSpacing(-0.2f); // tighter
+column.Item().Text(sentence).FontSize(16).WordSpacing(0f);    // normal
+column.Item().Text(sentence).FontSize(16).WordSpacing(0.4f);  // looser
+```
+
+## Paragraph options
+
+```csharp
+page.Content()
+    .Text(Placeholders.Paragraphs())
+    .ParagraphSpacing(10);         // space between paragraphs in points
+
+page.Content()
+    .Text(Placeholders.Paragraphs())
+    .ParagraphFirstLineIndentation(40); // indent first line of each paragraph
+
+page.Content()
+    .Text(Placeholders.Paragraph())
+    .ClampLines(3);                // truncate after 3 lines with "…"
+
+page.Content()
+    .Text(Placeholders.Paragraph())
+    .ClampLines(3, " [...]");      // custom ellipsis
+```
+
+## Text direction (RTL support)
+
+Text direction controls how the layout engine places runs of text.
+
+```csharp
+// Automatic detection (default)
+TextStyle.Default.DirectionAuto();
+
+// Explicit left-to-right
+TextStyle.Default.DirectionFromLeftToRight();
+
+// Explicit right-to-left
+TextStyle.Default.DirectionFromRightToLeft();
+```
+
+Use `page.ContentFromRightToLeft()` to apply RTL direction to the entire page set:
+
+```csharp
+document.Page(page =>
+{
+    page.ContentFromRightToLeft();
+    page.Content().Text("مرحبا بالعالم");
+});
+```
+
+## DefaultTextStyle
+
+Set a baseline style that cascades down to all text elements within a scope.
+
+### Page-level
+
+```csharp
+document.Page(page =>
+{
+    page.DefaultTextStyle(x => x.FontSize(20).FontFamily("Times New Roman"));
+    // All Text() elements on this page inherit FontSize 20
+});
+```
+
+### Container-level
+
+Override or extend the inherited style within a specific layout region:
+
+```csharp
+page.Content()
+    .DefaultTextStyle(style => style.FontSize(20))
+    .Column(column =>
+    {
+        column.Item().Text("Products").ExtraBold().Underline();
+        column.Item().Text("Comments: " + Placeholders.Sentence());
+
+        column.Item()
+            .DefaultTextStyle(style => style.FontSize(14))
+            .Table(table =>
+            {
+                // Table cells inherit FontSize 14
+                table.Header(header =>
+                {
+                    header.Cell()
+                        .DefaultTextStyle(x => x.Bold().FontColor(Colors.Blue.Medium))
+                        .Text("ID");
+                });
+            });
+    });
+```
+
+### TextDescriptor-level
+
+```csharp
+page.Content()
+    .Text(text =>
+    {
+        text.DefaultTextStyle(x => x.Light().LetterSpacing(-0.1f).WordSpacing(0.1f));
+
+        text.Span("Changing typography settings helps creating ");
+        text.Span("significant").LetterSpacing(0.2f).Black().BackgroundColor(Colors.Grey.Lighten2);
+        text.Span(" visual contrast.");
+    });
+```
+
+<Tip>
+Styles cascade from the outermost scope inward. A span-level style always overrides a container-level or page-level style for that span.
+</Tip>

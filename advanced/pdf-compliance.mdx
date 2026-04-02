@@ -1,0 +1,182 @@
+---
+title: "PDF compliance"
+description: "Configure PDF/A and PDF/UA conformance levels in QuestPDF, and embed ZUGFeRD/Factur-X e-invoicing attachments for PDF/A-3 compliance."
+---
+
+QuestPDF supports PDF/A archival conformance and PDF/UA accessibility conformance through `DocumentSettings`. Both standards are set before document generation and affect the structure of the produced PDF.
+
+## PDF/A conformance
+
+PDF/A is an ISO standard for long-term archiving of electronic documents. It restricts certain PDF features (embedded JavaScript, encryption, external references) to ensure the document remains self-contained and renderable without external resources.
+
+Set the conformance level via `DocumentSettings.PDFA_Conformance`:
+
+```csharp
+Document
+    .Create(container =>
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.Content().Text("Archival document");
+        });
+    })
+    .WithSettings(new DocumentSettings
+    {
+        PDFA_Conformance = PDFA_Conformance.PDFA_3B
+    })
+    .GeneratePdf("archive.pdf");
+```
+
+### PDFA_Conformance enum
+
+| Value | Standard | Description |
+|-------|----------|-------------|
+| `None` | — | No PDF/A conformance (default). |
+| `PDFA_2A` | PDF/A-2a | Level A: full accessibility, tagged structure required. |
+| `PDFA_2B` | PDF/A-2b | Level B: basic visual preservation. |
+| `PDFA_2U` | PDF/A-2u | Level U: Unicode text mapping required. |
+| `PDFA_3A` | PDF/A-3a | Level A with support for embedded files of any format. |
+| `PDFA_3B` | PDF/A-3b | Level B with support for embedded files of any format. |
+| `PDFA_3U` | PDF/A-3u | Level U with support for embedded files of any format. |
+
+<AccordionGroup>
+  <Accordion title="PDF/A-2 vs PDF/A-3">
+    PDF/A-2 and PDF/A-3 differ in how they handle embedded files. PDF/A-2 restricts embedded files to PDF/A-compliant PDFs only. PDF/A-3 removes that restriction, allowing you to embed files of any format — including XML data for e-invoicing (ZUGFeRD/Factur-X).
+  </Accordion>
+  <Accordion title="Conformance levels A, B, and U">
+    - **Level B** (basic): ensures visual fidelity — the document looks the same when rendered.
+    - **Level U** (unicode): level B plus a requirement that all text have Unicode mappings, enabling reliable text extraction and search.
+    - **Level A** (accessible): level U plus a requirement for tagged document structure, enabling full accessibility and logical reading order.
+  </Accordion>
+</AccordionGroup>
+
+## PDF/UA conformance
+
+PDF/UA (ISO 14289) defines requirements for universally accessible PDF documents, covering tagged content, logical reading order, and alternative text for images.
+
+```csharp
+Document
+    .Create(container =>
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.Content().Text("Accessible document");
+        });
+    })
+    .WithSettings(new DocumentSettings
+    {
+        PDFUA_Conformance = PDFUA_Conformance.PDFUA_1
+    })
+    .GeneratePdf("accessible.pdf");
+```
+
+### PDFUA_Conformance enum
+
+| Value | Description |
+|-------|-------------|
+| `None` | No PDF/UA conformance (default). |
+| `PDFUA_1` | PDF/UA-1 (ISO 14289-1) universal accessibility. |
+
+<Warning>
+Enabling `PDFUA_Conformance` makes the document **non-reproducible**. Two identical generation runs may produce different binary output because accessibility metadata includes timestamps and other dynamic values.
+</Warning>
+
+## Combining PDF/A and PDF/UA
+
+You can enable both conformance levels simultaneously:
+
+```csharp
+Document
+    .Create(container => { /* ... */ })
+    .WithSettings(new DocumentSettings
+    {
+        PDFA_Conformance = PDFA_Conformance.PDFA_3A,
+        PDFUA_Conformance = PDFUA_Conformance.PDFUA_1
+    })
+    .GeneratePdf("archive-accessible.pdf");
+```
+
+## IDocument interface
+
+When using the `IDocument` interface, override `GetSettings()` to apply compliance settings:
+
+```csharp
+public class ArchivalDocument : IDocument
+{
+    public DocumentSettings GetSettings() => new DocumentSettings
+    {
+        PDFA_Conformance = PDFA_Conformance.PDFA_3B
+    };
+
+    public void Compose(IDocumentContainer container)
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.Content().Text("Document content");
+        });
+    }
+}
+```
+
+## ZUGFeRD and Factur-X e-invoicing
+
+ZUGFeRD and Factur-X are hybrid e-invoice standards that embed a machine-readable XML file inside a human-readable PDF. They require **PDF/A-3** conformance and the attachment relationship set to `Alternative`.
+
+Use `DocumentOperation` to attach the XML file and extend the XMP metadata after generating the PDF:
+
+<Steps>
+  <Step title="Generate the PDF with PDF/A-3 conformance">
+    ```csharp
+    Document
+        .Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(2, Unit.Centimetre);
+                page.Content().Text("Invoice content");
+            });
+        })
+        .WithSettings(new DocumentSettings
+        {
+            PDFA_Conformance = PDFA_Conformance.PDFA_3B
+        })
+        .GeneratePdf("invoice-base.pdf");
+    ```
+  </Step>
+  <Step title="Attach the XML and extend XMP metadata">
+    ```csharp
+    DocumentOperation
+        .LoadFile("invoice-base.pdf")
+        .AddAttachment(new DocumentOperation.DocumentAttachment
+        {
+            FilePath = "factur-x.xml",
+            AttachmentName = "factur-x.xml",
+            MimeType = "application/xml",
+            Description = "Factur-X machine-readable invoice",
+            Relationship = DocumentOperation.DocumentAttachmentRelationship.Alternative
+        })
+        .ExtendMetadata("""
+            <fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>
+            <fx:DocumentType>INVOICE</fx:DocumentType>
+            <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
+            <fx:Version>1.0</fx:Version>
+        """)
+        .Save("invoice-facturx.pdf");
+    ```
+  </Step>
+</Steps>
+
+<Note>
+The `Relationship = Alternative` value signals to PDF/A-3-compliant validators that the embedded XML is an alternative representation of the document content, which is required by the ZUGFeRD and Factur-X specifications.
+</Note>
+
+<Tip>
+If you need to embed supporting data files (spreadsheets, datasets) rather than an alternative representation, use `Relationship = DocumentAttachmentRelationship.Data` instead.
+</Tip>

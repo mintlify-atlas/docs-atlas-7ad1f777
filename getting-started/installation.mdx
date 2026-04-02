@@ -1,0 +1,67 @@
+---
+title: "Installation"
+description: "Add QuestPDF to your .NET project via NuGet in seconds."
+---
+
+QuestPDF is distributed as a NuGet package and supports all major .NET runtimes and platforms.
+
+## Requirements
+
+| | Supported |
+|---|---|
+| **Frameworks** | `net6.0`, `net8.0`, `net10.0`, `netstandard2.0` (.NET Framework 4.6.2+) |
+| **Operating systems** | Windows, Linux, macOS |
+| **Cloud & containers** | Azure, AWS, Google Cloud, Docker, Kubernetes |
+
+## Install the package
+
+<CodeGroup>
+
+```bash dotnet CLI
+dotnet add package QuestPDF
+```
+
+```powershell Package Manager Console
+Install-Package QuestPDF
+```
+
+```xml .csproj ItemGroup
+<ItemGroup>
+  <PackageReference Include="QuestPDF" Version="2026.2.4" />
+</ItemGroup>
+```
+
+</CodeGroup>
+
+<Note>
+  The current release is **2026.2.4**. Check [NuGet](https://www.nuget.org/packages/QuestPDF) for the latest version.
+</Note>
+
+## IDE package manager
+
+You can also install QuestPDF through your IDE's built-in NuGet interface. Search for `QuestPDF` in:
+
+<CardGroup cols={3}>
+  <Card title="Visual Studio" icon="windows" href="https://learn.microsoft.com/en-us/nuget/consume-packages/install-use-packages-visual-studio">
+    NuGet Package Manager GUI
+  </Card>
+  <Card title="VS Code" icon="code" href="https://code.visualstudio.com/docs/csharp/package-management">
+    C# Dev Kit package management
+  </Card>
+  <Card title="JetBrains Rider" icon="r" href="https://www.jetbrains.com/help/rider/Using_NuGet.html">
+    Built-in NuGet tool window
+  </Card>
+</CardGroup>
+
+## Next steps
+
+After installing, set your license type before generating any PDFs.
+
+<CardGroup cols={2}>
+  <Card title="License setup" icon="key" href="/getting-started/license-setup">
+    Configure your license tier — Community is free for most users.
+  </Card>
+  <Card title="Quick start" icon="rocket" href="/getting-started/quickstart">
+    Generate your first PDF in a few lines of code.
+  </Card>
+</CardGroup>

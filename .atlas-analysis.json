@@ -1,0 +1,115 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "QuestPDF",
+  "projectDescription": "A modern .NET library for generating PDF documents using a fluent C# API with a flexible, component-based layout engine.",
+  "theme": "luma",
+  "primaryColor": "#16a8f7",
+  "lightColor": "#b2e6f9",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "getting-started/installation",
+              "getting-started/quickstart",
+              "getting-started/license-setup"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/document-structure",
+              "concepts/components",
+              "concepts/text-styling",
+              "concepts/images",
+              "concepts/page-settings"
+            ]
+          },
+          {
+            "group": "Layout Elements",
+            "pages": [
+              "elements/row-column",
+              "elements/table",
+              "elements/padding-alignment",
+              "elements/layers-z-index",
+              "elements/inlined-multi-column"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/document-operations",
+              "advanced/pdf-compliance",
+              "advanced/encryption-security",
+              "advanced/merging-documents",
+              "advanced/performance-settings"
+            ]
+          },
+          {
+            "group": "Companion App",
+            "pages": [
+              "companion/overview",
+              "companion/hot-reload"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Tutorials",
+            "pages": [
+              "examples/invoice-tutorial",
+              "examples/report-example"
+            ]
+          },
+          {
+            "group": "Element Recipes",
+            "pages": [
+              "examples/tables-grids",
+              "examples/charts-barcodes",
+              "examples/rtl-multilingual",
+              "examples/accessibility-pdf-ua"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Fluent C# API for designing PDF layouts with clean, readable code",
+    "Component-based architecture supporting reusable document fragments (IComponent, IDynamicComponent)",
+    "Comprehensive layout engine with Row, Column, Table, Grid, Layers, Inlined, and MultiColumn elements",
+    "Full text styling: fonts, sizes, weights, colors, spacing, RTL support, page numbers",
+    "Image support: PNG, JPG, WEBP, SVG, dynamic images, and SkiaSharp integration",
+    "Document operations: merge, split, overlay, underlay, encrypt/decrypt, linearize, attach files",
+    "PDF/A (2b, 2u, 2a, 3b, 3u, 3a) and PDF/UA-1 compliance standards",
+    "ZUGFeRD / Factur-X e-invoicing support",
+    "Companion App with live hot-reload preview for rapid development",
+    "Cross-platform: Windows, Linux, macOS on .NET 6+, .NET Framework 4.6.2+",
+    "High performance: generates thousands of pages per second with minimal resource usage"
+  ],
+  "publicApiSurface": [
+    "Document.Create(Action<IDocumentContainer>)",
+    "Document.Merge(IEnumerable<IDocument>)",
+    "IDocument interface (GetMetadata, GetSettings, Compose)",
+    "IComponent interface (Compose)",
+    "IDynamicComponent interface",
+    "IContainer fluent extensions (Row, Column, Table, Grid, Padding, Alignment, Text, Image, etc.)",
+    "GenerateExtensions: GeneratePdf, GenerateXps, GenerateImages, GenerateSvg",
+    "DocumentOperation.LoadFile().TakePages().MergeFile().Encrypt().Save()",
+    "DocumentSettings (PDFA_Conformance, PDFUA_Conformance, ImageCompressionQuality, ImageRasterDpi)",
+    "DocumentMetadata (Title, Author, Keywords, CreationDate, etc.)",
+    "Settings.License (LicenseType.Community / Professional / Enterprise)",
+    "CompanionExtensions.ShowInCompanion()",
+    "PageSizes (A4, Letter, Legal, etc.)",
+    "Colors static class with named color palette",
+    "TextStyle fluent API (FontSize, FontFamily, Bold, Italic, Underline, etc.)"
+  ]
+}

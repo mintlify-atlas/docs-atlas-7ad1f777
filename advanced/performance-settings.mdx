@@ -1,0 +1,228 @@
+---
+title: "Performance settings"
+description: "Tune QuestPDF's global Settings and per-document DocumentSettings for high-throughput generation: caching, debugging, fonts, image quality, DPI, and compression."
+---
+
+QuestPDF exposes two levels of configuration that affect performance and output quality:
+
+- **`Settings`** — static, process-wide options configured once at application startup.
+- **`DocumentSettings`** — per-document options set on each `Document` instance.
+
+## Global Settings
+
+`QuestPDF.Settings` is a static class. Set its properties once during application initialization, before generating any documents.
+
+### EnableCaching
+
+```csharp
+Settings.EnableCaching = true; // default: true
+```
+
+When enabled, QuestPDF inserts additional elements into the layout tree to cache intermediate calculation results. This significantly improves generation speed for documents with repeated structures (for example, table rows or repeating headers) at the cost of slightly higher memory usage.
+
+<Tip>
+Leave caching enabled in production. Disable it only for profiling or memory-constrained environments where generation time is not critical.
+</Tip>
+
+### EnableDebugging
+
+```csharp
+Settings.EnableDebugging = false; // default: true when debugger is attached
+```
+
+When enabled, QuestPDF adds extra layout instrumentation that produces richer error messages when content does not fit its constraints. The enhanced messages include element locations and measurement details.
+
+By default this is enabled only when a debugger is attached (`System.Diagnostics.Debugger.IsAttached`). Disable it explicitly in production to avoid the instrumentation overhead.
+
+```csharp
+// Explicitly disable in production
+Settings.EnableDebugging = false;
+```
+
+### CheckIfAllTextGlyphsAreAvailable
+
+```csharp
+Settings.CheckIfAllTextGlyphsAreAvailable = false; // default: true when debugger is attached
+```
+
+When enabled, QuestPDF verifies that every glyph in rendered text exists in the specified font. If a glyph is missing, a `DocumentDrawingException` is thrown. When disabled, missing glyphs are silently replaced with placeholder characters.
+
+Enable this during development to catch missing font coverage early. Disable it in production to avoid the per-glyph check overhead.
+
+```csharp
+// Development
+Settings.CheckIfAllTextGlyphsAreAvailable = true;
+
+// Production
+Settings.CheckIfAllTextGlyphsAreAvailable = false;
+```
+
+### UseEnvironmentFonts
+
+```csharp
+Settings.UseEnvironmentFonts = true; // default: true
+```
+
+When `true`, QuestPDF discovers and uses fonts installed on the host operating system. When `false`, only fonts explicitly registered via `FontManager` are available.
+
+Set this to `false` in containerized or server environments where you want full control over available fonts and need reproducible output regardless of the host's font installation:
+
+```csharp
+// Docker / CI — use only bundled fonts
+Settings.UseEnvironmentFonts = false;
+FontManager.RegisterFont(File.OpenRead("fonts/Roboto-Regular.ttf"));
+FontManager.RegisterFont(File.OpenRead("fonts/Roboto-Bold.ttf"));
+```
+
+### FontDiscoveryPaths
+
+```csharp
+// Default: contains the application files path
+Settings.FontDiscoveryPaths.Add("/app/fonts");
+```
+
+`FontDiscoveryPaths` is a collection of directory paths that QuestPDF scans automatically at startup for font files. The application executable directory is included by default.
+
+Add additional paths to load fonts from a shared directory or a Docker volume:
+
+```csharp
+Settings.FontDiscoveryPaths.Add("/shared/fonts");
+Settings.FontDiscoveryPaths.Add("C:\\Fonts\\Corporate");
+```
+
+### TemporaryStoragePath
+
+```csharp
+Settings.TemporaryStoragePath = "/tmp/questpdf";
+```
+
+Sets the directory used for temporary files during document processing. Defaults to the system temp directory. Change this when you need to control I/O locality (for example, a fast SSD volume in production).
+
+## DocumentSettings
+
+`DocumentSettings` is applied per document via `.WithSettings()` or by overriding `GetSettings()` on an `IDocument` implementation.
+
+### ImageCompressionQuality
+
+Controls the JPEG encoding quality for opaque images. Images with an alpha channel are always encoded as PNG and are not affected by this setting.
+
+```csharp
+new DocumentSettings
+{
+    ImageCompressionQuality = ImageCompressionQuality.High // default
+}
+```
+
+| Value | JPEG quality | Use case |
+|-------|-------------|----------|
+| `Best` | 100 / 100 | Maximum fidelity, largest file size. |
+| `VeryHigh` | 90 / 100 | Near-lossless, suitable for print. |
+| `High` | 75 / 100 | Default. Good balance of quality and size. |
+| `Medium` | 50 / 100 | Reduced file size, some visible compression. |
+| `Low` | 25 / 100 | Small file size, noticeable quality loss. |
+| `VeryLow` | 10 / 100 | Smallest file size, significant quality loss. |
+
+### ImageRasterDpi
+
+Sets the DPI at which features without native PDF vector support are rasterized. Also controls the resolution of image output formats (PNG, JPEG).
+
+```csharp
+new DocumentSettings
+{
+    ImageRasterDpi = 288 // default (72 × 4)
+}
+```
+
+Higher DPI produces sharper output but increases file size and generation time. 288 DPI is a good default for print-quality documents. Use 144 DPI for screen-only documents where file size matters.
+
+```csharp
+// Screen / web delivery
+new DocumentSettings { ImageRasterDpi = 144 }
+
+// Print quality
+new DocumentSettings { ImageRasterDpi = 288 }
+
+// High-fidelity print
+new DocumentSettings { ImageRasterDpi = 600 }
+```
+
+### CompressDocument
+
+```csharp
+new DocumentSettings
+{
+    CompressDocument = true // default
+}
+```
+
+When enabled, QuestPDF applies additional compression to the PDF structure. This can significantly reduce file size with only a small increase in generation time. Disable it if raw generation speed is more important than file size.
+
+### ContentDirection
+
+```csharp
+new DocumentSettings
+{
+    ContentDirection = ContentDirection.LeftToRight // default
+}
+```
+
+Sets the default content flow direction for the entire document.
+
+| Value | Description |
+|-------|-------------|
+| `ContentDirection.LeftToRight` | Standard LTR layout (default). |
+| `ContentDirection.RightToLeft` | RTL layout for Arabic, Hebrew, and other RTL languages. |
+
+## High-throughput configuration
+
+For server environments generating large volumes of documents, apply these settings at startup:
+
+```csharp
+// Program.cs / Startup
+Settings.License = LicenseType.Professional;
+
+// Maximize throughput
+Settings.EnableCaching = true;
+Settings.EnableDebugging = false;
+Settings.CheckIfAllTextGlyphsAreAvailable = false;
+
+// Isolate fonts from host OS for reproducibility
+Settings.UseEnvironmentFonts = false;
+Settings.FontDiscoveryPaths.Add("/app/fonts");
+
+// Direct temp files to fast local storage
+Settings.TemporaryStoragePath = "/tmp/questpdf";
+```
+
+Then configure each document for the appropriate quality/size trade-off:
+
+```csharp
+var settings = new DocumentSettings
+{
+    ImageCompressionQuality = ImageCompressionQuality.Medium,
+    ImageRasterDpi = 144,
+    CompressDocument = true
+};
+
+// Reuse the settings object across all documents
+var documents = invoiceModels.Select(model =>
+    new InvoiceDocument(model, settings));
+
+Document.Merge(documents).GeneratePdf("batch-output.pdf");
+```
+
+<Tip>
+`DocumentSettings` is a plain object and is safe to create once and reuse across document instances. Creating it once avoids repeated object allocation in high-throughput loops.
+</Tip>
+
+<AccordionGroup>
+  <Accordion title="Memory vs. speed: EnableCaching">
+    `Settings.EnableCaching` inserts memoization nodes into the layout tree. For documents with many repeated elements (tables with hundreds of rows, repeating headers), this can reduce generation time by 50% or more. The trade-off is proportionally higher peak memory usage during generation. Benchmark both settings under realistic document workloads to find the right balance.
+  </Accordion>
+  <Accordion title="Reducing file size without losing quality">
+    The most effective levers for file size are `ImageCompressionQuality` and `ImageRasterDpi`. Drop `ImageCompressionQuality` to `Medium` and `ImageRasterDpi` to `144` for screen-only documents. Enable `CompressDocument` at all times unless you need to inspect the raw PDF structure. Together, these changes can reduce file size by 60–80% compared to defaults with minimal visible quality loss at screen resolution.
+  </Accordion>
+  <Accordion title="Containerized deployments">
+    Set `UseEnvironmentFonts = false` and explicitly register all fonts via `FontManager` or `FontDiscoveryPaths`. This ensures documents render identically regardless of what fonts are installed on the container host, and prevents unexpected fallback font substitution when a deployment environment changes.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,221 @@
+---
+title: "Encryption and security"
+description: "Protect PDF files with 40-bit, 128-bit, or 256-bit encryption. Control user and owner passwords, printing, annotation, content extraction, and other permissions."
+---
+
+QuestPDF uses `DocumentOperation` to apply encryption to existing PDF files. Three key strength classes are available: `Encryption40Bit`, `Encryption128Bit`, and `Encryption256Bit`. All three share a common base class that defines passwords, and each class exposes the permission flags supported by its encryption level.
+
+<Warning>
+Encryption is applied as a post-processing step via `DocumentOperation`, not during document generation. Generate your PDF first, then pass it through `DocumentOperation.Encrypt`.
+</Warning>
+
+## Encryption classes
+
+### Encryption40Bit
+
+40-bit RC4 encryption. Supported by all PDF readers, but considered weak by modern standards. Use only when compatibility with very old readers is required.
+
+```csharp
+public sealed class Encryption40Bit : EncryptionBase
+{
+    public bool AllowAnnotation { get; set; } = true;
+    public bool AllowContentExtraction { get; set; } = true;
+    public bool AllowModification { get; set; } = true;
+    public bool AllowPrinting { get; set; } = true;
+}
+```
+
+### Encryption128Bit
+
+128-bit RC4 encryption. Adds `AllowAssembly`, `AllowFillingForms`, and `EncryptMetadata` compared to 40-bit.
+
+```csharp
+public sealed class Encryption128Bit : EncryptionBase
+{
+    public bool AllowAnnotation { get; set; } = true;
+    public bool AllowAssembly { get; set; } = true;
+    public bool AllowContentExtraction { get; set; } = true;
+    public bool AllowFillingForms { get; set; } = true;
+    public bool AllowPrinting { get; set; } = true;
+    public bool EncryptMetadata { get; set; } = true;
+}
+```
+
+### Encryption256Bit
+
+256-bit AES encryption. The strongest option and recommended for new documents.
+
+```csharp
+public sealed class Encryption256Bit : EncryptionBase
+{
+    public bool AllowAnnotation { get; set; } = true;
+    public bool AllowAssembly { get; set; } = true;
+    public bool AllowContentExtraction { get; set; } = true;
+    public bool AllowFillingForms { get; set; } = true;
+    public bool AllowPrinting { get; set; } = true;
+    public bool EncryptMetadata { get; set; } = true;
+}
+```
+
+## Passwords
+
+All three classes inherit from `EncryptionBase`:
+
+```csharp
+public class EncryptionBase
+{
+    public string? UserPassword { get; set; }
+    public string OwnerPassword { get; set; }
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `UserPassword` | Password required to open the document. Set to `null` to allow opening without a password while still enforcing permission restrictions. |
+| `OwnerPassword` | Password that grants full access to all features, bypassing all permission restrictions. **Required.** |
+
+<Warning>
+Using the same value for `UserPassword` and `OwnerPassword` is insecure. An empty `OwnerPassword` is also considered insecure. Always use distinct, strong values for both.
+</Warning>
+
+## Permission flags
+
+All permission flags default to `true` (allowed). Set them to `false` to restrict the corresponding operation.
+
+| Flag | 40-bit | 128-bit | 256-bit | Description |
+|------|:------:|:-------:|:-------:|-------------|
+| `AllowPrinting` | Yes | Yes | Yes | Print the document. |
+| `AllowAnnotation` | Yes | Yes | Yes | Add or modify annotations and form fields. |
+| `AllowContentExtraction` | Yes | Yes | Yes | Copy or extract text and images. |
+| `AllowModification` | Yes | — | — | Modify document content (40-bit only). |
+| `AllowAssembly` | — | Yes | Yes | Insert, rotate, or delete pages; create bookmarks. |
+| `AllowFillingForms` | — | Yes | Yes | Fill in form fields. |
+| `EncryptMetadata` | — | Yes | Yes | Include XMP metadata in encryption. |
+
+## Applying encryption
+
+Pass an encryption object to the `Encrypt` overload that matches the desired key strength:
+
+```csharp
+// 256-bit AES — recommended
+DocumentOperation
+    .LoadFile("invoice.pdf")
+    .Encrypt(new DocumentOperation.Encryption256Bit
+    {
+        OwnerPassword = "owner-secret",
+        UserPassword = "reader-password",
+        AllowPrinting = true,
+        AllowAnnotation = false,
+        AllowContentExtraction = false,
+        AllowModification = false,
+        AllowAssembly = false,
+        AllowFillingForms = false,
+        EncryptMetadata = true
+    })
+    .Save("invoice-encrypted.pdf");
+```
+
+```csharp
+// 128-bit RC4
+DocumentOperation
+    .LoadFile("report.pdf")
+    .Encrypt(new DocumentOperation.Encryption128Bit
+    {
+        OwnerPassword = "owner-secret",
+        AllowPrinting = true,
+        AllowContentExtraction = false
+    })
+    .Save("report-encrypted.pdf");
+```
+
+```csharp
+// 40-bit RC4 (legacy compatibility only)
+DocumentOperation
+    .LoadFile("legacy.pdf")
+    .Encrypt(new DocumentOperation.Encryption40Bit
+    {
+        OwnerPassword = "owner-secret",
+        AllowPrinting = true,
+        AllowModification = false
+    })
+    .Save("legacy-encrypted.pdf");
+```
+
+<Note>
+`Encrypt` can only be called once per `DocumentOperation` chain. Calling it a second time throws an `InvalidOperationException`.
+</Note>
+
+## Opening a password-protected file
+
+When loading a file that already has a password, pass it as the second argument to `LoadFile`:
+
+```csharp
+DocumentOperation
+    .LoadFile("protected.pdf", password: "existing-password")
+    .TakePages("1-z")
+    .Save("output.pdf");
+```
+
+## Removing encryption
+
+### Decrypt
+
+`Decrypt` removes all encryption from the document. You must supply the correct password via `LoadFile`:
+
+```csharp
+DocumentOperation
+    .LoadFile("protected.pdf", password: "owner-password")
+    .Decrypt()
+    .Save("unprotected.pdf");
+```
+
+### RemoveRestrictions
+
+`RemoveRestrictions` removes both encryption and restrictions imposed by digital signatures. It implicitly performs decryption as well. The visual appearance of signatures is preserved, but they are cryptographically invalidated.
+
+```csharp
+DocumentOperation
+    .LoadFile("signed-and-protected.pdf", password: "owner-password")
+    .RemoveRestrictions()
+    .Save("unrestricted.pdf");
+```
+
+<Warning>
+`RemoveRestrictions` invalidates all digital signatures in the document. Use this only when you need to edit a previously signed document and accept that the original signatures will no longer be verifiable.
+</Warning>
+
+## Complete example
+
+The following example generates a contract PDF, then encrypts it so that end users can open and print it but cannot modify or copy the content.
+
+```csharp
+// Step 1: generate the document
+Document
+    .Create(container =>
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.Content().Text("Contract content...");
+        });
+    })
+    .GeneratePdf("contract-draft.pdf");
+
+// Step 2: apply encryption restrictions
+DocumentOperation
+    .LoadFile("contract-draft.pdf")
+    .Encrypt(new DocumentOperation.Encryption256Bit
+    {
+        OwnerPassword = "admin-password-123",
+        UserPassword = "client-password-456",
+        AllowPrinting = true,
+        AllowAnnotation = false,
+        AllowContentExtraction = false,
+        AllowModification = false,
+        AllowAssembly = false,
+        AllowFillingForms = false,
+        EncryptMetadata = true
+    })
+    .Save("contract-final.pdf");
+```

@@ -1,0 +1,288 @@
+---
+title: "Images"
+description: "Loading static images from files, byte arrays, and streams; dynamic SkiaSharp rendering; SVG support; scaling options; and development placeholders."
+---
+
+QuestPDF provides several ways to embed images in a document: static images loaded from disk or memory, dynamically generated bitmaps via SkiaSharp, and scalable vector graphics (SVG).
+
+## Static images
+
+### From a file path
+
+```csharp
+page.Content().Image("Resources/Photos/photo.jpg");
+```
+
+File-based images are cached by path, so loading the same file multiple times in one document does not increase memory usage.
+
+### From a byte array
+
+```csharp
+byte[] imageData = File.ReadAllBytes("photo.png");
+page.Content().Image(imageData);
+```
+
+### From a stream
+
+```csharp
+using var stream = File.OpenRead("photo.jpg");
+page.Content().Image(stream);
+```
+
+### Shared image object
+
+When the same image appears many times in a document (for example, a checkbox icon repeated in a list), load it once as an `Image` object and pass it to each `.Image()` call. This avoids redundant decoding.
+
+```csharp
+using var image = Image.FromFile("Resources/checkbox.png");
+
+page.Content()
+    .Column(column =>
+    {
+        column.Spacing(15);
+
+        foreach (var i in Enumerable.Range(0, 5))
+        {
+            column.Item().Row(row =>
+            {
+                row.AutoItem().Width(28).Image(image);
+                row.RelativeItem().PaddingLeft(8).AlignMiddle().Text(Placeholders.Label());
+            });
+        }
+    });
+```
+
+## Scaling options
+
+The `ImageDescriptor` returned by `.Image()` exposes four scaling methods. The library picks an initial default based on the parent container's constraints.
+
+<AccordionGroup>
+  <Accordion title="FitWidth (default)">
+    Scales the image so it fills the full width of its container. Height adjusts to maintain the aspect ratio. This is the default when no height constraint is present.
+
+    ```csharp
+    page.Content()
+        .Width(200)
+        .Height(150)
+        .Image("Resources/Photos/photo.jpg")
+        .FitWidth();
+    ```
+  </Accordion>
+  <Accordion title="FitHeight">
+    Scales the image so it fills the full height of its container. Width adjusts to maintain the aspect ratio. Use this with height-constraining elements such as `.Height()` or `.MaxHeight()`.
+
+    ```csharp
+    page.Content()
+        .Width(200)
+        .Height(100)
+        .Image("Resources/Photos/photo.jpg")
+        .FitHeight();
+    ```
+  </Accordion>
+  <Accordion title="FitArea">
+    Combines `FitWidth` and `FitHeight`. The image fills all available space while preserving its aspect ratio — it fits either the width or the height depending on the container's dimensions. Recommended as a safe default when both dimensions are constrained.
+
+    ```csharp
+    page.Content()
+        .Width(200)
+        .Height(100)
+        .Image("Resources/Photos/photo.jpg")
+        .FitArea();
+    ```
+  </Accordion>
+  <Accordion title="FitUnproportionally">
+    Stretches the image to fill all available space without preserving the aspect ratio. May result in distorted images and is generally not recommended.
+
+    ```csharp
+    page.Content()
+        .Width(200)
+        .Height(50)
+        .Image("Resources/Photos/photo.jpg")
+        .FitUnproportionally();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Image quality settings
+
+### Raster DPI
+
+Controls the resolution at which the image is rasterized inside the document. A higher DPI produces sharper output but increases file size.
+
+```csharp
+// Lower raster DPI = lower resolution, smaller file
+column.Item()
+    .Image("Resources/Photos/photo.jpg")
+    .WithRasterDpi(16);
+
+// Higher raster DPI = higher resolution, larger file
+column.Item()
+    .Image("Resources/Photos/photo.jpg")
+    .WithRasterDpi(288);
+```
+
+### Compression quality
+
+```csharp
+// Low quality = smaller output file
+column.Item()
+    .Image("Resources/Photos/photo.jpg")
+    .WithCompressionQuality(ImageCompressionQuality.VeryLow);
+
+// High quality = larger output file
+column.Item()
+    .Image("Resources/Photos/photo.jpg")
+    .WithCompressionQuality(ImageCompressionQuality.VeryHigh);
+```
+
+### Document-level defaults
+
+Override the default compression and DPI for all images in the document via `DocumentSettings`:
+
+```csharp
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.Content().Image("Resources/Photos/photo.jpg");
+        });
+    })
+    .WithSettings(new DocumentSettings
+    {
+        // default: ImageCompressionQuality.High
+        ImageCompressionQuality = ImageCompressionQuality.Medium,
+
+        // default: 288
+        ImageRasterDpi = 144
+    })
+    .GeneratePdf("output.pdf");
+```
+
+## Dynamic images with SkiaSharp
+
+Use the delegate overload of `.Image()` to generate a bitmap at render time. The delegate receives a `GenerateDynamicImageDelegatePayload` containing the exact pixel dimensions required by the layout engine, ensuring pixel-perfect output.
+
+```csharp
+page.Content()
+    .AspectRatio(80 / 50f)
+    .Image(GenerateNationalFlagOfPoland);
+
+byte[]? GenerateNationalFlagOfPoland(GenerateDynamicImageDelegatePayload context)
+{
+    using var whitePaint = new SKPaint { Color = SKColors.White };
+    using var redPaint = new SKPaint { Color = SKColor.Parse("#BB0A30") };
+
+    using var bitmap = new SKBitmap(context.ImageSize.Width, context.ImageSize.Height);
+    using var canvas = new SKCanvas(bitmap);
+
+    canvas.DrawRect(0, 0, context.ImageSize.Width, context.ImageSize.Height / 2, whitePaint);
+    canvas.DrawRect(0, context.ImageSize.Height / 2, context.ImageSize.Width, context.ImageSize.Height, redPaint);
+    canvas.Flush();
+
+    using var content = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+    return content.ToArray();
+}
+```
+
+<Tip>
+Dynamic images are ideal for charts, maps, QR codes, and any content that would lose quality when scaled. The layout engine requests the image at the exact required resolution.
+</Tip>
+
+There is also a simpler overload that receives only the `ImageSize`:
+
+```csharp
+page.Content()
+    .Image((ImageSize size) =>
+    {
+        // generate and return byte[] for the given size
+    });
+```
+
+## SVG support
+
+The `.Svg()` extension accepts either a file path (ending in `.svg`) or raw SVG content as a string.
+
+### From a file path
+
+```csharp
+page.Background().Svg("Resources/certificate-background.svg").FitArea();
+```
+
+### From SVG content
+
+```csharp
+var svgContent = File.ReadAllText("Resources/pdf-icon.svg");
+
+page.Content()
+    .Column(column =>
+    {
+        column.Item().Text("The classic PDF icon looks like this:").Bold();
+        column.Item().Height(15);
+        column.Item().Svg(svgContent);
+    });
+```
+
+<Note>
+The `.Svg()` method auto-detects whether the string is a file path (by checking for the `.svg` extension) or raw SVG markup.
+</Note>
+
+SVG images support the same scaling descriptors as raster images: `.FitWidth()`, `.FitHeight()`, and `.FitArea()`.
+
+### Dynamic SVG
+
+Use `GenerateDynamicSvgDelegate` to produce SVG content at render time, receiving the available `Size`:
+
+```csharp
+page.Content().Svg((Size size) =>
+{
+    // Return an SVG string sized to `size.Width` x `size.Height`
+    return $"<svg width=\"{size.Width}\" height=\"{size.Height}\">...</svg>";
+});
+```
+
+## Placeholders for development
+
+During development, use `Placeholders.Image()` to fill image slots with a generated image so you can verify layout before real assets are ready.
+
+```csharp
+column.Item().Width(200).Height(150).Placeholder();
+```
+
+The full image gallery example from the documentation examples:
+
+```csharp
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.MinSize(new PageSize(0, 0));
+            page.MaxSize(new PageSize(400, 1000));
+            page.DefaultTextStyle(x => x.FontSize(20));
+            page.Margin(25);
+
+            page.Content()
+                .Grid(grid =>
+                {
+                    grid.Columns(2);
+                    grid.Spacing(10);
+
+                    grid.Item(2).Text("My photo gallery:").Bold();
+
+                    grid.Item().Image("Resources/Photos/photo-gallery-1.jpg");
+                    grid.Item().Image("Resources/Photos/photo-gallery-2.jpg");
+                    grid.Item().Image("Resources/Photos/photo-gallery-3.jpg");
+                    grid.Item().Image("Resources/Photos/photo-gallery-4.jpg");
+                });
+        });
+    })
+    .GenerateImages(
+        x => "image-example.webp",
+        new ImageGenerationSettings
+        {
+            ImageFormat = ImageFormat.Webp,
+            ImageCompressionQuality = ImageCompressionQuality.VeryHigh,
+            RasterDpi = 144
+        });
+```

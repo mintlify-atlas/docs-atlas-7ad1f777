@@ -1,0 +1,232 @@
+---
+title: "Row and Column"
+description: "Arrange elements horizontally with Row or vertically with Column. Use relative, constant, and auto sizing to control how items share available space."
+---
+
+`Row` places its children side-by-side horizontally. `Column` stacks its children top-to-bottom. Both support paging — content that doesn't fit on one page continues on the next.
+
+## Row
+
+Use `Row` when you need a horizontal layout. Each item in a row is one of three types:
+
+- **`RelativeItem`** — takes space proportionally relative to other relative items
+- **`ConstantItem`** — takes a fixed number of points (or any `Unit`)
+- **`AutoItem`** — sizes itself to its content width
+
+```csharp
+container.Row(row =>
+{
+    row.ConstantItem(100)
+        .Background(Colors.Grey.Medium)
+        .Padding(10)
+        .Text("100pt");
+
+    row.RelativeItem()
+        .Background(Colors.Grey.Lighten1)
+        .Padding(10)
+        .Text("75pt");
+
+    row.RelativeItem(2)
+        .Background(Colors.Grey.Lighten2)
+        .Padding(10)
+        .Text("150pt");
+});
+```
+
+In the example above the row is 325 points wide. The constant item occupies 100 pt. The remaining 225 pt is split proportionally: one `RelativeItem(1)` gets 75 pt and `RelativeItem(2)` gets 150 pt.
+
+### Spacing between items
+
+Call `row.Spacing(value)` to add uniform gaps between all items:
+
+```csharp
+container.Width(220).Height(50).Row(row =>
+{
+    row.Spacing(10);
+
+    row.RelativeItem(2).Background(Colors.Grey.Medium);
+    row.RelativeItem(3).Background(Colors.Grey.Lighten1);
+    row.RelativeItem(5).Background(Colors.Grey.Lighten2);
+});
+```
+
+For non-uniform gaps, insert empty `ConstantItem` elements as spacers:
+
+```csharp
+container.Height(50).Row(row =>
+{
+    row.RelativeItem().Background(Colors.Grey.Darken1);
+    row.ConstantItem(10);
+    row.RelativeItem().Background(Colors.Grey.Medium);
+    row.ConstantItem(20);
+    row.RelativeItem().Background(Colors.Grey.Lighten1);
+    row.ConstantItem(30);
+    row.RelativeItem().Background(Colors.Grey.Lighten2);
+});
+```
+
+### Variable-height items
+
+By default, all items in a `Row` stretch to the same height. Wrap an item with `ShrinkVertical()` to let it match its own content height instead:
+
+```csharp
+container.Row(row =>
+{
+    row.Spacing(15);
+
+    row.RelativeItem()
+        .ShrinkVertical()
+        .Background(Colors.Grey.Lighten3)
+        .CornerRadius(15)
+        .Padding(15)
+        .Text("Programming is both a science and an art — it demands precision, creativity, and patience.");
+
+    row.RelativeItem()
+        .ShrinkVertical()
+        .Background(Colors.Grey.Lighten3)
+        .CornerRadius(15)
+        .Padding(15)
+        .Text("Programming is the art of turning ideas into logic.");
+});
+```
+
+<Note>
+`AutoItem` sizes to content width but doesn't participate in proportional sizing. Use it with `MaxWidth` to avoid layout exceptions when content is unexpectedly large.
+</Note>
+
+### Row API reference
+
+<AccordionGroup>
+  <Accordion title="RelativeItem(float size = 1)">
+    Adds an item that shares available width proportionally with other relative items. A size of `2` is twice as wide as a size of `1`. Throws if `size` is zero or negative.
+  </Accordion>
+  <Accordion title="ConstantItem(float size, Unit unit = Unit.Point)">
+    Adds an item with a fixed pixel/point width. Useful for icons, labels, or any element with a known fixed size.
+  </Accordion>
+  <Accordion title="AutoItem()">
+    Adds an item that expands to fit its content. Does not participate in relative sizing.
+  </Accordion>
+  <Accordion title="Spacing(float spacing, Unit unit = Unit.Point)">
+    Sets uniform horizontal spacing between all items in the row. Cannot be negative.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Column
+
+Use `Column` to stack elements vertically. Each child is added via `column.Item()`.
+
+```csharp
+container.Column(column =>
+{
+    column.Item().Background(Colors.Grey.Medium).Height(50);
+    column.Item().Background(Colors.Grey.Lighten1).Height(75);
+    column.Item().Background(Colors.Grey.Lighten2).Height(100);
+});
+```
+
+### Spacing between items
+
+```csharp
+container.Column(column =>
+{
+    column.Spacing(25);
+
+    column.Item().Background(Colors.Grey.Medium).Height(50);
+    column.Item().Background(Colors.Grey.Lighten1).Height(75);
+    column.Item().Background(Colors.Grey.Lighten2).Height(100);
+});
+```
+
+For non-uniform gaps, insert empty `Item()` elements with explicit heights:
+
+```csharp
+container.Column(column =>
+{
+    column.Item().Background(Colors.Grey.Darken1).Height(50);
+    column.Item().Height(10);
+    column.Item().Background(Colors.Grey.Medium).Height(50);
+    column.Item().Height(20);
+    column.Item().Background(Colors.Grey.Lighten1).Height(50);
+    column.Item().Height(30);
+    column.Item().Background(Colors.Grey.Lighten2).Height(50);
+});
+```
+
+### Shrink-to-content items
+
+By default, column items stretch to the full available width. Wrap an item with `ShrinkHorizontal()` to let it fit its content width:
+
+```csharp
+container.Column(column =>
+{
+    column.Spacing(15);
+
+    column.Item()
+        .ShrinkHorizontal()
+        .Background(Colors.Grey.Lighten3)
+        .CornerRadius(15)
+        .Padding(15)
+        .Text("REST API");
+
+    column.Item()
+        .ShrinkHorizontal()
+        .Background(Colors.Grey.Lighten3)
+        .CornerRadius(15)
+        .Padding(15)
+        .Text("Garbage Collection");
+
+    column.Item()
+        .ShrinkHorizontal()
+        .Background(Colors.Grey.Lighten3)
+        .CornerRadius(15)
+        .Padding(15)
+        .Text("Object-Oriented Programming");
+});
+```
+
+### Column API reference
+
+<AccordionGroup>
+  <Accordion title="Item()">
+    Adds a new child container to the column. Returns an `IContainer` for chaining further layout calls.
+  </Accordion>
+  <Accordion title="Spacing(float value, Unit unit = Unit.Point)">
+    Sets uniform vertical spacing between all items in the column. Cannot be negative.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Combining Row and Column
+
+Nest `Row` inside `Column` (or vice versa) to build two-dimensional layouts:
+
+```csharp
+container.Column(column =>
+{
+    column.Spacing(10);
+
+    // Header row
+    column.Item().Row(row =>
+    {
+        row.RelativeItem().Background(Colors.Blue.Darken2).Padding(8).Text("Name").FontColor(Colors.White);
+        row.ConstantItem(100).Background(Colors.Blue.Darken2).Padding(8).Text("Value").FontColor(Colors.White);
+    });
+
+    // Data rows
+    foreach (var i in Enumerable.Range(1, 3))
+    {
+        column.Item().Row(row =>
+        {
+            row.RelativeItem().Padding(8).Text($"Item {i}");
+            row.ConstantItem(100).Padding(8).AlignRight().Text($"${i * 10}");
+        });
+    }
+});
+```
+
+<Tip>
+When content inside a `Row` varies in height across pages, QuestPDF may repeat some items on the next page to maintain layout integrity. Wrap items with `ShowOnce()` to prevent repetition.
+</Tip>

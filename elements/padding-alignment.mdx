@@ -1,0 +1,191 @@
+---
+title: "Padding, Alignment, and Size Constraints"
+description: "Control spacing with Padding, position content with Alignment, and constrain element dimensions with Width, Height, MinWidth, MaxWidth, MinHeight, and MaxHeight."
+---
+
+## Padding
+
+`Padding` adds space inside an element — between the element's boundary and its content. All padding methods accept a value and an optional `Unit` (default: `Unit.Point`).
+
+### Individual sides
+
+```csharp
+container
+    .Width(250)
+    .PaddingVertical(10)
+    .PaddingLeft(20)
+    .PaddingRight(40)
+    .Background(Colors.Grey.Lighten2)
+    .Text("Sample text");
+```
+
+### All sides at once
+
+```csharp
+container.Padding(20).Background(Colors.Grey.Lighten2).Text("Hello");
+```
+
+### Negative padding
+
+Negative values push content beyond the element's edges, increasing the available space — similar to negative margins in CSS:
+
+```csharp
+container
+    .Width(250)
+    .Padding(50)
+    .Background(Colors.Grey.Lighten2)
+    .PaddingHorizontal(-25)  // expands content 25 pt left and right
+    .Text("Sample text with negative padding");
+```
+
+### Padding API reference
+
+<AccordionGroup>
+  <Accordion title="Padding(float value, Unit unit = Unit.Point)">
+    Applies equal padding to all four sides.
+  </Accordion>
+  <Accordion title="PaddingHorizontal(float value, Unit unit = Unit.Point)">
+    Applies padding to the left and right sides.
+  </Accordion>
+  <Accordion title="PaddingVertical(float value, Unit unit = Unit.Point)">
+    Applies padding to the top and bottom sides.
+  </Accordion>
+  <Accordion title="PaddingTop(float value, Unit unit = Unit.Point)">
+    Applies padding to the top side only.
+  </Accordion>
+  <Accordion title="PaddingBottom(float value, Unit unit = Unit.Point)">
+    Applies padding to the bottom side only.
+  </Accordion>
+  <Accordion title="PaddingLeft(float value, Unit unit = Unit.Point)">
+    Applies padding to the left side only.
+  </Accordion>
+  <Accordion title="PaddingRight(float value, Unit unit = Unit.Point)">
+    Applies padding to the right side only.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Alignment
+
+`Alignment` positions content within its container. Horizontal and vertical alignment are independent and can be combined.
+
+```csharp
+container
+    .Width(300)
+    .Height(300)
+    .AlignBottom()
+    .AlignCenter()
+    .Background(Colors.Grey.Lighten2)
+    .Padding(10)
+    .Text("Lorem ipsum");
+```
+
+The snippet above places text centered horizontally and flush with the bottom of a 300×300 pt container.
+
+### Horizontal alignment
+
+<Tabs>
+  <Tab title="AlignLeft">
+    ```csharp
+    container.AlignLeft().Text("Left-aligned");
+    ```
+    Content is placed at the left edge of the container.
+  </Tab>
+  <Tab title="AlignCenter">
+    ```csharp
+    container.AlignCenter().Text("Centered");
+    ```
+    Content is centered horizontally with equal space on both sides.
+  </Tab>
+  <Tab title="AlignRight">
+    ```csharp
+    container.AlignRight().Text("Right-aligned");
+    ```
+    Content is placed at the right edge of the container.
+  </Tab>
+</Tabs>
+
+### Vertical alignment
+
+<Tabs>
+  <Tab title="AlignTop">
+    ```csharp
+    container.AlignTop().Text("Top-aligned");
+    ```
+    Content is placed at the top edge of the container.
+  </Tab>
+  <Tab title="AlignMiddle">
+    ```csharp
+    container.AlignMiddle().Text("Middle");
+    ```
+    Content is centered vertically with equal space above and below.
+  </Tab>
+  <Tab title="AlignBottom">
+    ```csharp
+    container.AlignBottom().Text("Bottom-aligned");
+    ```
+    Content is placed at the bottom edge of the container.
+  </Tab>
+</Tabs>
+
+### Combining horizontal and vertical
+
+Chain both axes to position content anywhere in its container:
+
+```csharp
+// Center both horizontally and vertically
+container.AlignCenter().AlignMiddle().Text("Centered");
+
+// Bottom-right corner
+container.AlignRight().AlignBottom().Text("Bottom right");
+```
+
+---
+
+## Size constraints
+
+Use these extensions to set exact, minimum, or maximum dimensions on any container.
+
+### Width
+
+```csharp
+container.Width(200).Background(Colors.Grey.Lighten2).Text("Exactly 200 pt wide");
+
+container.MinWidth(100).MaxWidth(300).Text("Between 100 and 300 pt");
+```
+
+### Height
+
+```csharp
+container.Height(50).Background(Colors.Grey.Lighten2).Text("Exactly 50 pt tall");
+
+container.MinHeight(40).Background(Colors.Grey.Lighten2).Text("At least 40 pt tall");
+```
+
+### Size constraints API reference
+
+<AccordionGroup>
+  <Accordion title="Width(float value, Unit unit = Unit.Point)">
+    Sets both the minimum and maximum width to the same value, producing an exact width.
+  </Accordion>
+  <Accordion title="MinWidth(float value, Unit unit = Unit.Point)">
+    Sets the minimum width. The element grows if content requires more space.
+  </Accordion>
+  <Accordion title="MaxWidth(float value, Unit unit = Unit.Point)">
+    Sets the maximum width. Content is clipped or wraps if it exceeds this value.
+  </Accordion>
+  <Accordion title="Height(float value, Unit unit = Unit.Point)">
+    Sets both the minimum and maximum height to the same value, producing an exact height.
+  </Accordion>
+  <Accordion title="MinHeight(float value, Unit unit = Unit.Point)">
+    Sets the minimum height. The element grows if content requires more space.
+  </Accordion>
+  <Accordion title="MaxHeight(float value, Unit unit = Unit.Point)">
+    Sets the maximum height. Content that exceeds this is clipped.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+`Width` and `Height` are implemented as `MinWidth + MaxWidth` and `MinHeight + MaxHeight` with the same value. You can mix them freely — for example, set `Width` for an exact horizontal size and `MinHeight` to let the element grow vertically.
+</Note>

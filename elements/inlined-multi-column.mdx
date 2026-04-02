@@ -1,0 +1,211 @@
+---
+title: "Inlined and MultiColumn"
+description: "Flow items in a wrapping horizontal line with Inlined, or split long-form content into newspaper-style columns with MultiColumn."
+---
+
+## Inlined
+
+`Inlined` arranges items in a single horizontal line and wraps to the next line when they don't fit — similar to CSS flexbox with `flex-wrap: wrap`. Each item sizes itself independently. The container supports paging.
+
+```csharp
+container
+    .Background(Colors.Grey.Lighten3)
+    .Padding(25)
+    .Border(1)
+    .Background(Colors.White)
+    .Inlined(inlined =>
+    {
+        inlined.Spacing(25);
+        inlined.BaselineMiddle();
+        inlined.AlignCenter();
+
+        foreach (var _ in Enumerable.Range(0, 15))
+            inlined.Item().Element(RandomBlock);
+    });
+```
+
+### Spacing
+
+Set uniform gaps with `Spacing`, or control horizontal and vertical gaps independently:
+
+```csharp
+container.Inlined(inlined =>
+{
+    inlined.VerticalSpacing(15);
+    inlined.HorizontalSpacing(30);
+
+    foreach (var _ in Enumerable.Range(0, 10))
+        inlined.Item().Element(RandomBlock);
+});
+```
+
+### Horizontal alignment
+
+Control how items are distributed within each row:
+
+<Tabs>
+  <Tab title="AlignLeft">
+    ```csharp
+    inlined.AlignLeft();
+    ```
+    Items start from the left edge of the container. This is the default.
+  </Tab>
+  <Tab title="AlignCenter">
+    ```csharp
+    inlined.AlignCenter();
+    ```
+    Items are centered horizontally on each row.
+  </Tab>
+  <Tab title="AlignRight">
+    ```csharp
+    inlined.AlignRight();
+    ```
+    Items are pushed to the right edge of the container.
+  </Tab>
+  <Tab title="AlignJustify">
+    ```csharp
+    inlined.AlignJustify();
+    ```
+    Items are stretched so the first item touches the left edge and the last touches the right edge, with equal space between items.
+  </Tab>
+  <Tab title="AlignSpaceAround">
+    ```csharp
+    inlined.AlignSpaceAround();
+    ```
+    Items are distributed with equal space between them and at both ends of the row.
+  </Tab>
+</Tabs>
+
+### Baseline alignment
+
+When items on the same row have different heights, use baseline alignment to control their vertical position relative to each other:
+
+<AccordionGroup>
+  <Accordion title="BaselineTop()">
+    Aligns the top edges of all items on a row to a single horizontal line.
+  </Accordion>
+  <Accordion title="BaselineMiddle()">
+    Centers items vertically so their midpoints are on the same horizontal line.
+  </Accordion>
+  <Accordion title="BaselineBottom()">
+    Aligns the bottom edges of all items on a row to a single horizontal line.
+  </Accordion>
+</AccordionGroup>
+
+### Inlined API reference
+
+<AccordionGroup>
+  <Accordion title="Item()">
+    Adds a new item to the container. Returns an `IContainer` for chaining layout calls. Items wrap to the next line when the row is full.
+  </Accordion>
+  <Accordion title="Spacing(float value, Unit unit = Unit.Point)">
+    Sets both vertical and horizontal gaps between items.
+  </Accordion>
+  <Accordion title="HorizontalSpacing(float value, Unit unit = Unit.Point)">
+    Sets the gap between items on the same row.
+  </Accordion>
+  <Accordion title="VerticalSpacing(float value, Unit unit = Unit.Point)">
+    Sets the gap between rows.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## MultiColumn
+
+`MultiColumn` splits a single content stream into multiple vertical columns — like a newspaper or magazine layout. Content flows from the bottom of one column into the top of the next.
+
+```csharp
+container.MultiColumn(multiColumn =>
+{
+    multiColumn.Columns(3);
+    multiColumn.Spacing(25);
+
+    multiColumn
+        .Content()
+        .Column(column =>
+        {
+            column.Spacing(15);
+
+            foreach (var sectionId in Enumerable.Range(0, 3))
+            {
+                foreach (var textId in Enumerable.Range(0, 3))
+                    column.Item().Text(Placeholders.Paragraph()).Justify();
+
+                column.Item().AspectRatio(21 / 9f).Image(Placeholders.Image);
+            }
+        });
+});
+```
+
+### Custom spacer between columns
+
+Replace the default empty gap with any content using `Spacer()`. The spacer container's height matches the tallest column:
+
+```csharp
+container.MultiColumn(multiColumn =>
+{
+    multiColumn.Columns(2);
+    multiColumn.Spacing(50);
+
+    multiColumn
+        .Spacer()
+        .AlignCenter()
+        .LineVertical(2)
+        .LineColor(Colors.Grey.Medium);
+
+    multiColumn
+        .Content()
+        .Column(column =>
+        {
+            column.Spacing(15);
+            foreach (var _ in Enumerable.Range(0, 5))
+                column.Item().Text(Placeholders.Paragraph()).Justify();
+        });
+});
+```
+
+### Balanced column heights
+
+By default, content fills columns completely from top to bottom — the last column may be shorter than the others. Enable `BalanceHeight` to distribute content so all columns reach approximately the same height:
+
+```csharp
+container.MultiColumn(multiColumn =>
+{
+    multiColumn.Spacing(30);
+    multiColumn.BalanceHeight();
+
+    multiColumn
+        .Content()
+        .Column(column =>
+        {
+            column.Spacing(15);
+            foreach (var _ in Enumerable.Range(0, 8))
+                column.Item().Text(Placeholders.Paragraph()).Justify();
+        });
+});
+```
+
+### MultiColumn API reference
+
+<AccordionGroup>
+  <Accordion title="Columns(int value = 2)">
+    Sets the number of vertical columns. Must be 2 or more. Defaults to 2.
+  </Accordion>
+  <Accordion title="Spacing(float value, Unit unit = Unit.Point)">
+    Sets the horizontal gap between adjacent columns. When a `Spacer` is defined, this value controls the total space reserved for the spacer area.
+  </Accordion>
+  <Accordion title="Content()">
+    Returns the container for the main content. The content is automatically distributed across all defined columns. Call only once.
+  </Accordion>
+  <Accordion title="Spacer()">
+    Returns a container placed between each pair of columns. The container's height matches the tallest column. Call only once.
+  </Accordion>
+  <Accordion title="BalanceHeight(bool enable = true)">
+    When enabled, QuestPDF adjusts content distribution so columns reach approximately equal heights. When disabled (the default), columns fill to their full available height.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+`MultiColumn` flows content linearly. If you need independent content in each column — such as a side-by-side comparison — use `Row` with `RelativeItem` children instead.
+</Note>

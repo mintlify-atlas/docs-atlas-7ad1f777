@@ -1,0 +1,134 @@
+---
+title: "Layers and Z-Index"
+description: "Stack content visually with Layers for backgrounds and watermarks, and fine-tune render order with ZIndex to control which elements appear on top."
+---
+
+## Layers
+
+`Layers` lets you draw content at different visual depths within the same container. It requires exactly one `PrimaryLayer` that defines the container's height and supports paging. Any number of additional `Layer` calls can be placed before or after the primary layer.
+
+- A `Layer` defined **before** `PrimaryLayer` is drawn **underneath** it — use this for backgrounds.
+- A `Layer` defined **after** `PrimaryLayer` is drawn **on top of** it — use this for watermarks or overlays.
+
+```csharp
+container
+    .AspectRatio(4 / 3f)
+    .Layers(layers =>
+    {
+        // Background: drawn first, behind the primary content
+        layers.Layer()
+            .Image("Resources/card-background.jpg")
+            .FitUnproportionally();
+
+        // Primary content: determines container height
+        layers.PrimaryLayer()
+            .TranslateY(75)
+            .Column(column =>
+            {
+                column.Item()
+                    .AlignCenter()
+                    .Text("Horizon Ventures")
+                    .Bold().FontSize(32).FontColor(Colors.Blue.Darken2);
+
+                column.Item()
+                    .AlignCenter()
+                    .Text("Your journey begins here");
+            });
+    });
+```
+
+The background image is drawn first (behind the text). The primary column sits on top of it.
+
+### Repeating layers across pages
+
+When the primary layer spans multiple pages, all additional layers are repeated on each page — matching the height of the primary content on that page. This makes `Layers` well suited for page-scoped backgrounds or per-page watermarks.
+
+### Watermark example
+
+Place a semi-transparent overlay on top of the primary content by defining the extra layer **after** `PrimaryLayer`:
+
+```csharp
+container.Layers(layers =>
+{
+    layers.PrimaryLayer()
+        .Padding(20)
+        .Column(column =>
+        {
+            column.Spacing(10);
+            foreach (var _ in Enumerable.Range(0, 5))
+                column.Item().Text(Placeholders.Paragraph());
+        });
+
+    // Watermark: drawn on top of primary content
+    layers.Layer()
+        .AlignCenter()
+        .AlignMiddle()
+        .Text("CONFIDENTIAL")
+        .FontSize(48)
+        .FontColor(Colors.Red.Lighten3)
+        .Italic();
+});
+```
+
+### Layers API reference
+
+<AccordionGroup>
+  <Accordion title="PrimaryLayer()">
+    Returns a container for the main content. Determines the container's height. Must be called exactly once — omitting it or calling it multiple times throws a `DocumentComposeException`.
+  </Accordion>
+  <Accordion title="Layer()">
+    Returns a container for an additional layer. Call it before `PrimaryLayer()` for a background, or after for an overlay. Can be called any number of times.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+You must define exactly one `PrimaryLayer`. If you forget it or call it twice, QuestPDF throws a `DocumentComposeException` at document compose time.
+</Warning>
+
+---
+
+## ZIndex
+
+`ZIndex` controls the rendering order of sibling elements within the same parent container. By default, elements render in definition order (later elements paint over earlier ones). Assign a higher z-index to bring an element in front of its siblings, or a lower value (including negative) to push it behind them.
+
+The default z-index is `0`. A child inherits the z-index of its parent unless overridden.
+
+```csharp
+container
+    .PaddingVertical(15)
+    .Border(2)
+    .Row(row =>
+    {
+        row.RelativeItem()
+            .Background(Colors.Grey.Lighten3)
+            .Element(c => AddPricingItem(c, "Community", "Free"));
+
+        // The "Professional" card uses ZIndex(1) so it overlaps its neighbors,
+        // combined with negative padding to visually extend outside its cell.
+        row.RelativeItem()
+            .ZIndex(1)
+            .Padding(-15)
+            .Border(1)
+            .Background(Colors.Grey.Lighten1)
+            .PaddingTop(15)
+            .Element(c => AddPricingItem(c, "Professional", "$699"));
+
+        row.RelativeItem()
+            .Background(Colors.Grey.Lighten3)
+            .Element(c => AddPricingItem(c, "Enterprise", "$1999"));
+    });
+```
+
+In the example, the middle pricing card is painted after the others because `ZIndex(1)` raises it above the default `0`. When combined with `Padding(-15)`, the card visually overlaps its neighbors.
+
+### ZIndex API reference
+
+<AccordionGroup>
+  <Accordion title="ZIndex(int indexValue)">
+    Sets the rendering depth of this element relative to its siblings. Higher values render on top. The default is `0`. Accepts negative values to push content behind default-depth siblings.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+`ZIndex` is most useful inside `Row` or table cells where multiple items share the same parent and you want one to visually overlap the others. For layering content with independent sizing, use `Layers` instead.
+</Tip>

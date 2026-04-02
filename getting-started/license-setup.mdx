@@ -1,0 +1,105 @@
+---
+title: "License setup"
+description: "Choose the right QuestPDF license tier for your use case and configure it in your project."
+---
+
+QuestPDF uses a hybrid licensing model. You must set a license type before generating any PDF — the library will throw an exception if no license is configured.
+
+## Set your license
+
+Add the following line before any other QuestPDF code, typically at application startup:
+
+```csharp
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
+```
+
+<Warning>
+  The license must be set **before** calling any QuestPDF API. If you attempt to generate a PDF without setting a license, the library will throw an exception at runtime.
+</Warning>
+
+## License tiers
+
+QuestPDF offers four license tiers. All tiers include the full feature set — there are no capability restrictions based on license.
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="flask">
+    For evaluating QuestPDF before committing to a license. **Not suitable for production use.**
+  </Card>
+  <Card title="Community" icon="users">
+    Free for individuals, non-profits, FOSS projects, and organizations with less than $1M USD annual gross revenue.
+  </Card>
+  <Card title="Professional" icon="briefcase">
+    For individuals and companies with at most 10 software developers.
+  </Card>
+  <Card title="Enterprise" icon="building">
+    For individuals and companies with any number of software developers.
+  </Card>
+</CardGroup>
+
+## Choosing a tier
+
+| License | Who it's for |
+|---|---|
+| `LicenseType.Evaluation` | Pre-purchase evaluation only — not for production |
+| `LicenseType.Community` | Individuals, non-profits, FOSS projects, orgs under $1M annual revenue |
+| `LicenseType.Professional` | Teams of up to 10 developers |
+| `LicenseType.Enterprise` | Teams of any size |
+
+<Tip>
+  Most open-source projects, freelancers, and small teams qualify for the Community license. When in doubt, review the full license terms at [questpdf.com/license](https://www.questpdf.com/license).
+</Tip>
+
+## Configuration examples
+
+<CodeGroup>
+
+```csharp Community
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
+```
+
+```csharp Professional
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Professional;
+```
+
+```csharp Enterprise
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Enterprise;
+```
+
+```csharp Evaluation
+using QuestPDF.Infrastructure;
+
+// Evaluation only — not for production use
+QuestPDF.Settings.License = LicenseType.Evaluation;
+```
+
+</CodeGroup>
+
+## Placement in your application
+
+Set the license once at startup, before any PDF generation occurs. Common locations:
+
+- **ASP.NET Core** — `Program.cs`, before `app.Run()`
+- **Console app** — top of `Main()`
+- **Worker service** — in the service constructor or `StartAsync()`
+
+```csharp
+// Program.cs (ASP.NET Core)
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
+
+var builder = WebApplication.CreateBuilder(args);
+// ...
+```
+
+## Pricing and license terms
+
+For full pricing details, commercial license terms, and eligibility requirements, visit [questpdf.com/license](https://www.questpdf.com/license).

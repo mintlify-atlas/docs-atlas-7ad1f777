@@ -1,0 +1,309 @@
+---
+title: "Document structure"
+description: "How QuestPDF documents are composed: the Minimal API, the IDocument interface, page layout, metadata, settings, and output generation."
+---
+
+A QuestPDF document is built by composing pages inside a document container. There are two ways to define that structure: the **Minimal API** using `Document.Create`, and the **IDocument interface** for class-based documents.
+
+## Minimal API
+
+`Document.Create` accepts a delegate that receives an `IDocumentContainer` and returns a `Document` object. This is the quickest way to get started.
+
+```csharp
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A5);
+            page.Margin(2, Unit.Centimetre);
+            page.DefaultTextStyle(x => x.FontSize(24));
+
+            page.Header()
+                .Text("Hello, World!")
+                .FontSize(48).Bold();
+
+            page.Content()
+                .PaddingVertical(25)
+                .Text(Placeholders.LoremIpsum())
+                .Justify();
+
+            page.Footer()
+                .AlignCenter()
+                .Text(text =>
+                {
+                    text.CurrentPageNumber();
+                    text.Span(" / ");
+                    text.TotalPages();
+                });
+        });
+    })
+    .GeneratePdf("output.pdf");
+```
+
+The `Document.Create` method returns a `Document` instance (which implements `IDocument`). You can chain `.WithMetadata()`, `.WithSettings()`, and any generation method on it.
+
+## IDocument interface
+
+For larger projects, implement `IDocument` to encapsulate the document's structure in a dedicated class.
+
+```csharp
+public interface IDocument
+{
+    DocumentMetadata GetMetadata() => DocumentMetadata.Default;
+    DocumentSettings GetSettings() => DocumentSettings.Default;
+    void Compose(IDocumentContainer container);
+}
+```
+
+<Tabs>
+  <Tab title="Implementation">
+    ```csharp
+    public class InvoiceDocument : IDocument
+    {
+        private InvoiceModel Model { get; }
+
+        public InvoiceDocument(InvoiceModel model)
+        {
+            Model = model;
+        }
+
+        public DocumentMetadata GetMetadata() => new DocumentMetadata
+        {
+            Title = $"Invoice #{Model.InvoiceNumber}",
+            Author = "Acme Corp",
+            Subject = "Invoice",
+            Keywords = "invoice, billing"
+        };
+
+        public DocumentSettings GetSettings() => new DocumentSettings
+        {
+            ImageCompressionQuality = ImageCompressionQuality.High,
+            ImageRasterDpi = 288
+        };
+
+        public void Compose(IDocumentContainer container)
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(2, Unit.Centimetre);
+
+                page.Header().Element(ComposeHeader);
+                page.Content().Element(ComposeContent);
+                page.Footer().AlignCenter().Text(x => x.CurrentPageNumber());
+            });
+        }
+
+        private void ComposeHeader(IContainer container) { /* ... */ }
+        private void ComposeContent(IContainer container) { /* ... */ }
+    }
+    ```
+  </Tab>
+  <Tab title="Usage">
+    ```csharp
+    var model = LoadInvoiceModel();
+    var document = new InvoiceDocument(model);
+
+    // Generate as PDF
+    document.GeneratePdf("invoice.pdf");
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+`GetMetadata()` and `GetSettings()` have default implementations in .NET Core 3.0+. Override them only when you need custom values.
+</Note>
+
+## Page structure
+
+Each `document.Page(...)` call defines a page set — a group of pages sharing the same size, margins, and styling. A document can contain multiple page sets with different characteristics.
+
+Each page set has five layers:
+
+<AccordionGroup>
+  <Accordion title="Background()">
+    Drawn behind the primary layer (header + content + footer). Not affected by margins — it always occupies the full page. Useful for background images or color fills.
+
+    ```csharp
+    page.Background().Svg("Resources/certificate-background.svg").FitArea();
+    ```
+  </Accordion>
+  <Accordion title="Header()">
+    Rendered at the top of every page, above the content. Does not support paging — it must fit fully on a single page.
+
+    ```csharp
+    page.Header()
+        .PaddingBottom(1, Unit.Centimetre)
+        .Text("Report")
+        .FontSize(30)
+        .Bold();
+    ```
+  </Accordion>
+  <Accordion title="Content()">
+    The primary content area, between header and footer. Supports paging — this area determines the total number of pages.
+
+    ```csharp
+    page.Content()
+        .Text(Placeholders.Paragraphs())
+        .Justify();
+    ```
+  </Accordion>
+  <Accordion title="Footer()">
+    Rendered at the bottom of every page, below content. Like the header, it does not support paging.
+
+    ```csharp
+    page.Footer()
+        .AlignCenter()
+        .Text(text =>
+        {
+            text.CurrentPageNumber();
+            text.Span(" / ");
+            text.TotalPages();
+        });
+    ```
+  </Accordion>
+  <Accordion title="Foreground()">
+    Drawn in front of the primary layer, serving as a watermark or overlay. Not affected by margins.
+
+    ```csharp
+    page.Foreground().Svg("Resources/draft-foreground.svg").FitArea();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+Here is a complete example showing all main slots:
+
+```csharp
+document.Page(page =>
+{
+    page.Size(PageSizes.A4);
+    page.Margin(2, Unit.Centimetre);
+    page.DefaultTextStyle(x => x.FontSize(24));
+
+    page.Header()
+        .Background(Colors.Grey.Lighten1)
+        .Height(125)
+        .AlignCenter()
+        .AlignMiddle()
+        .Text("Header");
+
+    page.Content()
+        .Background(Colors.Grey.Lighten2)
+        .AlignCenter()
+        .AlignMiddle()
+        .Text("Content");
+
+    page.Footer()
+        .Background(Colors.Grey.Lighten1)
+        .Height(75)
+        .AlignCenter()
+        .AlignMiddle()
+        .Text("Footer");
+});
+```
+
+## Metadata and settings
+
+### DocumentMetadata
+
+Pass a `DocumentMetadata` instance to `.WithMetadata()` (Minimal API) or override `GetMetadata()` (`IDocument`).
+
+```csharp
+Document
+    .Create(container => { /* ... */ })
+    .WithMetadata(new DocumentMetadata
+    {
+        Title = "Annual Report 2025",
+        Author = "Finance Department",
+        Subject = "Annual financial summary",
+        Keywords = "finance, annual, report",
+        Creator = "MyApp v3.0",
+        Language = "en-US",
+        CreationDate = DateTimeOffset.Now,
+        ModifiedDate = DateTimeOffset.Now
+    })
+    .GeneratePdf("report.pdf");
+```
+
+### DocumentSettings
+
+Control rendering quality, compression, and PDF conformance with `DocumentSettings`.
+
+```csharp
+Document
+    .Create(container => { /* ... */ })
+    .WithSettings(new DocumentSettings
+    {
+        // default: ImageCompressionQuality.High
+        ImageCompressionQuality = ImageCompressionQuality.Medium,
+
+        // default: 288
+        ImageRasterDpi = 144,
+
+        // enable document compression
+        CompressDocument = true,
+
+        // PDF/A archival conformance
+        PDFA_Conformance = PDFA_Conformance.PDFA_3B
+    })
+    .GeneratePdf("output.pdf");
+```
+
+## Generating output
+
+The `Document` class (and any `IDocument` implementation) provides extension methods for generating output in different formats.
+
+<CardGroup cols={2}>
+  <Card title="PDF" icon="file-pdf">
+    ```csharp
+    // To a file
+    document.GeneratePdf("output.pdf");
+
+    // To a byte array
+    byte[] bytes = document.GeneratePdf();
+
+    // To a stream
+    document.GeneratePdf(stream);
+    ```
+  </Card>
+  <Card title="XPS (Windows only)" icon="file">
+    ```csharp
+    // To a file
+    document.GenerateXps("output.xps");
+
+    // To a byte array
+    byte[] bytes = document.GenerateXps();
+
+    // To a stream
+    document.GenerateXps(stream);
+    ```
+  </Card>
+  <Card title="Images" icon="image">
+    ```csharp
+    // Returns IEnumerable<byte[]> (one per page)
+    IEnumerable<byte[]> images = document.GenerateImages();
+
+    // Save each page to a file
+    document.GenerateImages(
+        index => $"page-{index}.png",
+        new ImageGenerationSettings { RasterDpi = 144 }
+    );
+    ```
+  </Card>
+  <Card title="SVG" icon="vector-square">
+    ```csharp
+    // Returns ICollection<string> (one SVG per page)
+    ICollection<string> svgPages = document.GenerateSvg();
+    ```
+  </Card>
+</CardGroup>
+
+## Merging documents
+
+Use `Document.Merge` to combine multiple `IDocument` instances into a single output.
+
+```csharp
+var merged = Document.Merge(documentA, documentB, documentC);
+merged.GeneratePdf("combined.pdf");
+```

@@ -1,0 +1,177 @@
+---
+title: "Merging documents"
+description: "Combine multiple QuestPDF IDocument instances with Document.Merge, or merge existing PDF files on disk with DocumentOperation.MergeFile."
+---
+
+QuestPDF provides two distinct approaches for combining PDFs:
+
+- **`Document.Merge`** — combines `IDocument` instances in memory during generation.
+- **`DocumentOperation.MergeFile`** — combines existing PDF files on disk using qpdf.
+
+Choose `Document.Merge` when you have documents built with the QuestPDF fluent API. Choose `DocumentOperation.MergeFile` when you need to combine pre-existing PDF files without regenerating them.
+
+## Document.Merge
+
+`Document.Merge` accepts multiple `IDocument` instances and returns a `MergedDocument` that behaves like any other document — you can call `.GeneratePdf()`, `.GenerateImages()`, or any other output method on it.
+
+### Overloads
+
+```csharp
+// IEnumerable<IDocument>
+public static MergedDocument Merge(IEnumerable<IDocument> documents);
+
+// params IDocument[]
+public static MergedDocument Merge(params IDocument[] documents);
+```
+
+### Basic usage
+
+```csharp
+var cover = Document.Create(container =>
+{
+    container.Page(page =>
+    {
+        page.Size(PageSizes.A4);
+        page.Margin(2, Unit.Centimetre);
+        page.Content()
+            .AlignCenter()
+            .AlignMiddle()
+            .Text("Annual Report 2025")
+            .FontSize(36)
+            .Bold();
+    });
+});
+
+var report = Document.Create(container =>
+{
+    container.Page(page =>
+    {
+        page.Size(PageSizes.A4);
+        page.Margin(2, Unit.Centimetre);
+        page.Content().Text("Report body...");
+    });
+});
+
+var appendix = Document.Create(container =>
+{
+    container.Page(page =>
+    {
+        page.Size(PageSizes.A4);
+        page.Margin(2, Unit.Centimetre);
+        page.Content().Text("Appendix...");
+    });
+});
+
+// params overload
+Document.Merge(cover, report, appendix)
+    .GeneratePdf("annual-report.pdf");
+```
+
+### Merging a collection
+
+When documents are produced dynamically (for example, one per customer), pass an `IEnumerable<IDocument>`:
+
+```csharp
+IEnumerable<InvoiceDocument> invoices = LoadInvoices()
+    .Select(model => new InvoiceDocument(model));
+
+Document.Merge(invoices).GeneratePdf("all-invoices.pdf");
+```
+
+### Using IDocument implementations
+
+`Document.Merge` works with any type implementing `IDocument`, including class-based documents:
+
+```csharp
+public class InvoiceDocument : IDocument
+{
+    private InvoiceModel Model { get; }
+
+    public InvoiceDocument(InvoiceModel model) => Model = model;
+
+    public DocumentSettings GetSettings() => new DocumentSettings
+    {
+        ImageCompressionQuality = ImageCompressionQuality.High
+    };
+
+    public void Compose(IDocumentContainer container)
+    {
+        container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.Content().Text($"Invoice #{Model.InvoiceNumber}");
+        });
+    }
+}
+
+var documents = new List<IDocument>
+{
+    new InvoiceDocument(invoice1),
+    new InvoiceDocument(invoice2),
+    new InvoiceDocument(invoice3)
+};
+
+Document.Merge(documents).GeneratePdf("invoice-batch.pdf");
+```
+
+<Note>
+Each `IDocument` in the merged set retains its own `DocumentSettings`. QuestPDF resolves conflicts (for example, differing `ImageCompressionQuality` values) on a per-document basis during rendering.
+</Note>
+
+## DocumentOperation.MergeFile
+
+`DocumentOperation.MergeFile` appends pages from an existing PDF file into the operation chain. This is a post-processing step that operates on files already on disk.
+
+```csharp
+public DocumentOperation MergeFile(string filePath, string? pageSelector = null);
+```
+
+### Basic file merge
+
+```csharp
+DocumentOperation
+    .LoadFile("part-one.pdf")
+    .MergeFile("part-two.pdf")
+    .MergeFile("part-three.pdf")
+    .Save("combined.pdf");
+```
+
+### Merging specific pages
+
+Pass a page selector to include only a subset of pages from the merged file:
+
+```csharp
+DocumentOperation
+    .LoadFile("main-document.pdf")
+    .MergeFile("appendix.pdf", pageSelector: "1-5")   // first 5 pages of appendix
+    .MergeFile("index.pdf", pageSelector: "z")         // last page of index only
+    .Save("output.pdf");
+```
+
+### Combining TakePages with MergeFile
+
+Use `TakePages` to restrict pages from the base document, then append additional files:
+
+```csharp
+DocumentOperation
+    .LoadFile("full-report.pdf")
+    .TakePages("1-10")                     // only first 10 pages from base
+    .MergeFile("executive-summary.pdf")    // full summary document
+    .MergeFile("charts.pdf", "1-3")        // first 3 pages of charts
+    .Save("condensed-report.pdf");
+```
+
+<Note>
+If you call `MergeFile` without first calling `TakePages`, all pages of the loaded document are automatically included (`"1-z"`) before the appended pages.
+</Note>
+
+## Choosing the right approach
+
+| | `Document.Merge` | `DocumentOperation.MergeFile` |
+|---|---|---|
+| Input | `IDocument` instances | Existing PDF files on disk |
+| Settings per section | Each document's own settings | Single qpdf operation |
+| Post-processing (encryption, overlay) | Must chain with `DocumentOperation` | Chain directly |
+| Dynamic data | Yes, generate from model | No, file must already exist |
+| Best for | Batch generation, dynamic content | Combining pre-existing PDFs |

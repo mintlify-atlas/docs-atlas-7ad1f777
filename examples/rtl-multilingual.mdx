@@ -1,0 +1,220 @@
+---
+title: 'RTL and multilingual'
+description: 'Configure right-to-left content direction in QuestPDF at the document level via DocumentSettings.ContentDirection or per container using ContentFromRightToLeft and ContentFromLeftToRight.'
+---
+
+QuestPDF models content direction through the `ContentDirection` enum. You can apply it globally via `DocumentSettings` or override it on any individual container. The two approaches compose: a document-level RTL setting is inherited by all containers, and any container can opt out by calling `.ContentFromLeftToRight()`.
+
+## ContentDirection enum
+
+```csharp ContentDirection.cs
+namespace QuestPDF.Infrastructure
+{
+    public enum ContentDirection
+    {
+        LeftToRight,
+        RightToLeft
+    }
+}
+```
+
+## Document-level direction
+
+Set `ContentDirection` on `DocumentSettings` to make every page default to RTL without touching individual containers.
+
+<Tabs>
+  <Tab title="IDocument.GetSettings">
+
+```csharp
+public DocumentSettings GetSettings() => new DocumentSettings
+{
+    ContentDirection = ContentDirection.RightToLeft
+};
+```
+
+  </Tab>
+  <Tab title="Document.Create fluent chain">
+
+```csharp
+Document
+    .Create(document => { /* ... */ })
+    .WithSettings(new DocumentSettings
+    {
+        ContentDirection = ContentDirection.RightToLeft
+    })
+    .GeneratePdf("rtl-document.pdf");
+```
+
+  </Tab>
+</Tabs>
+
+`DocumentSettings` also exposes other generation options:
+
+```csharp DocumentSettings.cs
+public sealed class DocumentSettings
+{
+    public ContentDirection ContentDirection { get; set; } = ContentDirection.LeftToRight;
+    public PDFA_Conformance  PDFA_Conformance  { get; set; } = PDFA_Conformance.None;
+    public PDFUA_Conformance PDFUA_Conformance { get; set; } = PDFUA_Conformance.None;
+    public bool CompressDocument { get; set; } = true;
+    public int  ImageRasterDpi   { get; set; } = 288;
+}
+```
+
+## Per-container direction override
+
+Use `.ContentFromLeftToRight()` and `.ContentFromRightToLeft()` on any `IContainer` to override the inherited direction for that subtree only.
+
+### Left-to-right row
+
+```csharp ContentDirectionExamples.cs
+page.Content()
+    .Width(250)
+    .ContentFromLeftToRight()
+    .Row(row =>
+    {
+        row.Spacing(5);
+
+        row.AutoItem().Height(50).Width(50).Background(Colors.Red.Lighten1);
+        row.AutoItem().Height(50).Width(50).Background(Colors.Green.Lighten1);
+        row.AutoItem().Height(50).Width(75).Background(Colors.Blue.Lighten1);
+    });
+```
+
+Items are placed red → green → blue starting from the left edge.
+
+### Right-to-left row
+
+```csharp ContentDirectionExamples.cs
+page.Content()
+    .Width(250)
+    .ContentFromRightToLeft()
+    .Row(row =>
+    {
+        row.Spacing(5);
+
+        row.AutoItem().Height(50).Width(50).Background(Colors.Red.Lighten1);
+        row.AutoItem().Height(50).Width(50).Background(Colors.Green.Lighten1);
+        row.AutoItem().Height(50).Width(75).Background(Colors.Blue.Lighten1);
+    });
+```
+
+The same three items are placed starting from the right edge: red → green → blue reads right-to-left.
+
+<Note>
+Content direction controls the flow direction of layout containers (rows, grids, table cell auto-placement). It does not automatically run the Unicode Bidi Algorithm on text. Supply correct Unicode text and a font that contains the glyphs you need; text shaping handles character-level directionality inside `.Text()` calls.
+</Note>
+
+## Full RTL document example
+
+```csharp
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(40);
+            page.DefaultTextStyle(x => x.FontSize(14));
+
+            page.Content()
+                .ContentFromRightToLeft()
+                .Column(column =>
+                {
+                    column.Spacing(10);
+
+                    // Header row — items flow right to left
+                    column.Item().Row(row =>
+                    {
+                        row.Spacing(10);
+                        row.AutoItem().Text("العنوان").Bold().FontSize(20);
+                        row.RelativeItem();
+                        row.AutoItem().Text("١٢٣٤").FontSize(14);
+                    });
+
+                    // Body text — Unicode bidi handles paragraph direction
+                    column.Item().Text(
+                        "هذا مثال على مستند يحتوي على نص عربي. " +
+                        "يتدفق المحتوى من اليمين إلى اليسار.");
+
+                    // Nested LTR block within an RTL document
+                    column.Item()
+                        .ContentFromLeftToRight()
+                        .Row(row =>
+                        {
+                            row.Spacing(5);
+                            row.AutoItem().Text("LTR label:").SemiBold();
+                            row.RelativeItem()
+                                .Text("Left-to-right value inside RTL layout");
+                        });
+                });
+        });
+    })
+    .WithSettings(new DocumentSettings
+    {
+        ContentDirection = ContentDirection.RightToLeft
+    })
+    .GeneratePdf("rtl-document.pdf");
+```
+
+## Mixed LTR/RTL text in a single page
+
+You can nest direction overrides to any depth. A common pattern is a document-level RTL direction with isolated LTR containers for code snippets, numeric tables, or Latin content blocks.
+
+```csharp
+page.Content()
+    .ContentFromRightToLeft()
+    .Column(column =>
+    {
+        // RTL paragraph
+        column.Item().Text("نص عربي هنا");
+
+        // LTR island for a numeric data table
+        column.Item()
+            .ContentFromLeftToRight()
+            .Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.RelativeColumn();
+                    columns.ConstantColumn(100);
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Padding(8).Text("Item");
+                    header.Cell().Padding(8).AlignRight().Text("Amount");
+                });
+
+                table.Cell().Padding(8).Text("Product A");
+                table.Cell().Padding(8).AlignRight().Text("$42.00");
+
+                table.Cell().Padding(8).Text("Product B");
+                table.Cell().Padding(8).AlignRight().Text("$18.50");
+            });
+    });
+```
+
+## What content direction affects
+
+| Element | Affected by direction |
+|---|---|
+| `Row` items | Yes — items flow in the configured direction |
+| `Column` items | No — columns always flow top to bottom |
+| `Grid` items | Yes — items fill in the configured direction |
+| `Table` cell auto-placement | Yes |
+| `Text` rendering | Partially — Unicode Bidi handles character level; alignment follows direction |
+| `AlignLeft` / `AlignRight` | Absolute — not direction-aware |
+
+<Warning>
+`AlignLeft` and `AlignRight` are absolute directional values, not reading-direction-relative. To align content relative to the reading direction, conditionally apply the correct alignment based on the active `ContentDirection`.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Charts and barcodes" icon="chart-bar" href="/examples/charts-barcodes">
+    Embed SkiaSharp charts, QR codes, and EAN-8 barcodes.
+  </Card>
+  <Card title="Accessibility and PDF/UA" icon="universal-access" href="/examples/accessibility-pdf-ua">
+    Add semantic structure tags and enable PDF/UA conformance.
+  </Card>
+</CardGroup>

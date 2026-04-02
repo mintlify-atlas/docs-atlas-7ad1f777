@@ -1,0 +1,248 @@
+---
+title: "Table"
+description: "Build structured data layouts with the Table element. Define columns, place cells manually or automatically, span rows and columns, and add repeating headers and footers."
+---
+
+The `Table` element renders content in a grid. Cells are placed in order of definition and automatically advance to the next column and row, or you can place them at explicit positions. Cells can span multiple rows and columns. The table supports paging — content that overflows continues on the next page.
+
+## Basic table
+
+Define your columns first with `ColumnsDefinition`, then call `table.Cell()` for each cell. Cells fill left-to-right, top-to-bottom automatically.
+
+```csharp
+container.Table(table =>
+{
+    table.ColumnsDefinition(columns =>
+    {
+        columns.ConstantColumn(50);
+        columns.RelativeColumn();
+        columns.ConstantColumn(125);
+    });
+
+    table.Header(header =>
+    {
+        header.Cell().BorderBottom(2).Padding(8).Text("#");
+        header.Cell().BorderBottom(2).Padding(8).Text("Product");
+        header.Cell().BorderBottom(2).Padding(8).AlignRight().Text("Price");
+    });
+
+    foreach (var i in Enumerable.Range(0, 6))
+    {
+        var price = Math.Round(Random.Shared.NextDouble() * 100, 2);
+
+        table.Cell().Padding(8).Text($"{i + 1}");
+        table.Cell().Padding(8).Text(Placeholders.Label());
+        table.Cell().Padding(8).AlignRight().Text($"${price}");
+    }
+});
+```
+
+## Columns definition
+
+Use `ConstantColumn` for a fixed-width column and `RelativeColumn` for a proportional column:
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(150);    // always 150 pt
+    columns.RelativeColumn(2);      // 2/5 of remaining width
+    columns.RelativeColumn(3);      // 3/5 of remaining width
+});
+```
+
+For a table 450 pt wide, the three columns are 150 pt, 120 pt, and 180 pt respectively.
+
+<Note>
+`ColumnsDefinition` must be called exactly once. The same column definitions apply to the header, body, and footer sections.
+</Note>
+
+## Header and footer
+
+Wrap header cells in `table.Header()` and footer cells in `table.Footer()`. Both sections repeat on every page when the table spans multiple pages.
+
+```csharp
+table.Header(header =>
+{
+    header.Cell().RowSpan(2).Element(CellStyle).AlignLeft().Text("Document type").Bold();
+
+    header.Cell().ColumnSpan(2).Element(CellStyle).Text("Inches").Bold();
+    header.Cell().ColumnSpan(2).Element(CellStyle).Text("Points").Bold();
+
+    header.Cell().Element(CellStyle).Text("Width");
+    header.Cell().Element(CellStyle).Text("Height");
+
+    header.Cell().Element(CellStyle).Text("Width");
+    header.Cell().Element(CellStyle).Text("Height");
+
+    IContainer CellStyle(IContainer container) =>
+        container.Border(1).BorderColor(Colors.Grey.Lighten1)
+            .Background(Colors.Grey.Lighten3)
+            .PaddingVertical(5).PaddingHorizontal(10)
+            .AlignCenter().AlignMiddle();
+});
+```
+
+<Tip>
+Header and footer cells use independent row/column numbering from the body. A `RowSpan` in the header does not affect body row positions.
+</Tip>
+
+## Cell styling
+
+Apply background colors, borders, and padding to any cell. Use a shared style method to keep your code DRY:
+
+```csharp
+table.Header(header =>
+{
+    header.Cell().Element(CellStyle).Text("Day");
+    header.Cell().Element(CellStyle).AlignCenter().Text("Weather");
+    header.Cell().Element(CellStyle).AlignRight().Text("Temp");
+
+    static IContainer CellStyle(IContainer container)
+    {
+        return container
+            .Background(Colors.Blue.Darken2)
+            .DefaultTextStyle(x => x.FontColor(Colors.White).Bold())
+            .PaddingVertical(8)
+            .PaddingHorizontal(16);
+    }
+});
+
+foreach (var i in Enumerable.Range(0, 7))
+{
+    IContainer CellStyle(IContainer container)
+    {
+        var backgroundColor = i % 2 == 0
+            ? Colors.Blue.Lighten5
+            : Colors.Blue.Lighten4;
+
+        return container
+            .Background(backgroundColor)
+            .PaddingVertical(8)
+            .PaddingHorizontal(16);
+    }
+
+    table.Cell().Element(CellStyle).Text(new DateTime(2025, 2, 26).AddDays(i).ToString("dd MMMM"));
+    table.Cell().Element(CellStyle).AlignCenter().Height(24)
+        .Svg($"Resources/WeatherIcons/{weatherIcon}");
+    table.Cell().Element(CellStyle).AlignRight().Text($"{Random.Shared.Next(-10, 35)}°");
+}
+```
+
+## Manual cell placement
+
+By default cells auto-place in order. Use `.Row()`, `.Column()`, `.RowSpan()`, and `.ColumnSpan()` for explicit placement:
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(75);
+    columns.ConstantColumn(150);
+    columns.ConstantColumn(200);
+    columns.ConstantColumn(200);
+});
+
+// Span two columns for "Predicted condition" header
+table.Cell().Row(1).Column(3).ColumnSpan(2)
+    .Element(HeaderCellStyle)
+    .Text("Predicted condition").Bold();
+
+// Span two rows for the rotated "Actual condition" label
+table.Cell().Row(3).Column(1).RowSpan(2)
+    .Element(HeaderCellStyle).RotateLeft()
+    .Text("Actual\ncondition").Bold().AlignCenter();
+
+table.Cell().Row(2).Column(3).Element(HeaderCellStyle).Text("Positive (PP)");
+table.Cell().Row(2).Column(4).Element(HeaderCellStyle).Text("Negative (PN)");
+
+table.Cell().Row(3).Column(2).Element(HeaderCellStyle).Text("Positive (P)");
+table.Cell().Row(4).Column(2).Element(HeaderCellStyle).Text("Negative (N)");
+
+table.Cell().Row(3).Column(3).Element(GoodCellStyle).Text("True positive (TP)");
+table.Cell().Row(3).Column(4).Element(BadCellStyle).Text("False negative (FN)");
+table.Cell().Row(4).Column(3).Element(BadCellStyle).Text("False positive (FP)");
+table.Cell().Row(4).Column(4).Element(GoodCellStyle).Text("True negative (TN)");
+```
+
+## Overlapping cells with RowSpan and ColumnSpan
+
+Use explicit placement combined with `RowSpan` to create complex layouts — for example, a calendar grid where events span multiple time slots:
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(60); // hour column
+    foreach (var _ in Enumerable.Range(0, 5))
+        columns.RelativeColumn(); // Mon–Fri
+});
+
+// Alternating background columns
+foreach (var column in Enumerable.Range(0, 7))
+{
+    var bg = column % 2 == 0 ? Colors.Grey.Lighten3 : Colors.White;
+    table.Cell().Column((uint)column).RowSpan(24).Background(bg);
+}
+
+// Hour labels
+foreach (var hour in Enumerable.Range(6, 10))
+{
+    table.Cell().Column(1).Row((uint)hour)
+        .PaddingVertical(5).PaddingHorizontal(10).AlignRight()
+        .Text($"{hour}");
+
+    table.Cell().Row((uint)hour).ColumnSpan(6)
+        .Border(1).BorderColor(Colors.Grey.Lighten1).Height(20);
+}
+
+// Events spanning multiple rows
+void AddEvent(uint day, uint hour, uint length, string name, Color bg, Color fg)
+{
+    table.Cell()
+        .Column(day + 1).Row(hour).RowSpan(length)
+        .Padding(5).Background(bg).Padding(5)
+        .AlignCenter().AlignMiddle()
+        .Text(name).FontColor(fg);
+}
+
+AddEvent(2, 11, 2, "Interview", Colors.Red.Lighten4, Colors.Red.Darken3);
+AddEvent(3, 12, 3, "Demo", Colors.Red.Lighten4, Colors.Red.Darken3);
+```
+
+## Extend last cells to table bottom
+
+When a table spans multiple pages and the last row does not reach the page bottom, call `ExtendLastCellsToTableBottom()` to stretch the last cells in each column to the bottom edge:
+
+```csharp
+container.Table(table =>
+{
+    table.ExtendLastCellsToTableBottom();
+
+    table.ColumnsDefinition(columns =>
+    {
+        columns.RelativeColumn();
+        columns.RelativeColumn();
+    });
+
+    // ... cells ...
+});
+```
+
+## Cell API reference
+
+<AccordionGroup>
+  <Accordion title="Row(uint value)">
+    Positions the cell at the specified row. Rows are numbered from 1.
+  </Accordion>
+  <Accordion title="Column(uint value)">
+    Positions the cell at the specified column. Columns are numbered from 1.
+  </Accordion>
+  <Accordion title="RowSpan(uint value)">
+    Extends the cell across the given number of rows downward.
+  </Accordion>
+  <Accordion title="ColumnSpan(uint value)">
+    Extends the cell across the given number of columns to the right.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+Explicitly placed cells can overlap. QuestPDF renders them in definition order, so later cells paint over earlier ones. Use `ZIndex` on a cell container if you need to control which cell appears on top.
+</Warning>

@@ -1,0 +1,302 @@
+---
+title: "Components"
+description: "Reusable document fragments with IComponent, stateful rendering with IDynamicComponent, and when to choose components over inline lambdas."
+---
+
+Components let you encapsulate a piece of document layout into a reusable class. Instead of duplicating layout code across multiple documents or pages, you define it once and reference it wherever needed.
+
+## IComponent interface
+
+Implement `IComponent` to create a reusable layout fragment. The library calls `Compose(IContainer container)` when rendering the component's content.
+
+```csharp
+public interface IComponent
+{
+    void Compose(IContainer container);
+}
+```
+
+### Basic example
+
+The following component renders a structured address block. It accepts an `Address` model and produces a labeled column layout.
+
+```csharp
+public class Address
+{
+    public string CompanyName { get; set; }
+    public string PostalCode { get; set; }
+    public string Country { get; set; }
+    public string City { get; set; }
+    public string Street { get; set; }
+}
+
+public class AddressComponent : IComponent
+{
+    private Address Address { get; }
+
+    public AddressComponent(Address address)
+    {
+        Address = address;
+    }
+
+    public void Compose(IContainer container)
+    {
+        container
+            .Column(column =>
+            {
+                column.Spacing(10);
+
+                AddItem("Company name", Address.CompanyName);
+                AddItem("Postal code", Address.PostalCode);
+                AddItem("Country", Address.Country);
+                AddItem("City", Address.City);
+                AddItem("Street", Address.Street);
+
+                void AddItem(string label, string value)
+                {
+                    column.Item().Text(text =>
+                    {
+                        text.Span($"{label}: ").Bold();
+                        text.Span(value);
+                    });
+                }
+            });
+    }
+}
+```
+
+## Using a component with container.Component\<T\>()
+
+Call `.Component(instance)` on any `IContainer` to embed a component at that point in the layout.
+
+```csharp
+var address = new Address
+{
+    CompanyName = "Apple",
+    PostalCode = "95014",
+    Country = "United States",
+    City = "Cupertino",
+    Street = "One Apple Park Way"
+};
+
+Document
+    .Create(document =>
+    {
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+
+            page.Content()
+                .Component(new AddressComponent(address));
+        });
+    })
+    .GeneratePdf("output.pdf");
+```
+
+If the component has a parameterless constructor, use the generic overload:
+
+```csharp
+page.Content().Component<AddressComponent>();
+```
+
+## Configurable components
+
+Components can expose a builder-style API to construct complex layouts without exposing their internals.
+
+```csharp
+public class SectionComponent : IComponent
+{
+    private List<(string Label, IContainer Content)> Fields { get; set; } = [];
+
+    public void Compose(IContainer container)
+    {
+        container
+            .Border(1)
+            .Column(column =>
+            {
+                foreach (var field in Fields)
+                {
+                    column.Item().Row(row =>
+                    {
+                        row.RelativeItem()
+                            .Border(1)
+                            .BorderColor(Colors.Grey.Medium)
+                            .Background(Colors.Grey.Lighten3)
+                            .Padding(10)
+                            .Text(field.Label);
+
+                        row.RelativeItem(2)
+                            .Border(1)
+                            .BorderColor(Colors.Grey.Medium)
+                            .Padding(10)
+                            .Element(field.Content);
+                    });
+                }
+            });
+    }
+
+    public void Text(string label, string text)
+    {
+        Custom(label).Text(text);
+    }
+
+    public void Image(string label, string imagePath)
+    {
+        Custom(label).Image(imagePath);
+    }
+
+    public IContainer Custom(string label)
+    {
+        var content = EmptyContainer.Create();
+        Fields.Add((label, content));
+        return content;
+    }
+}
+```
+
+Usage:
+
+```csharp
+var section = new SectionComponent();
+
+section.Text("Product name", "Widget Pro");
+section.Text("Description", "A high-quality widget for all needs.");
+section.Text("Price", "$49.99");
+section.Image("Photo", "Resources/product.jpg");
+section.Custom("Status").Text("Accepted").FontColor(Colors.Green.Darken2).Bold();
+
+page.Content().Component(section);
+```
+
+## IDynamicComponent for stateful components
+
+`IDynamicComponent<TState>` is for advanced scenarios where you need to be aware of the current page context — for example, rendering per-page subtotals in a table.
+
+The library calls `Compose(DynamicContext context)` once per page (potentially multiple times during layout). The method returns a `DynamicComponentComposeResult` describing the content for that page and whether more content remains.
+
+```csharp
+public interface IDynamicComponent<TState> where TState : struct
+{
+    TState State { get; set; }
+    DynamicComponentComposeResult Compose(DynamicContext context);
+}
+
+public sealed class DynamicComponentComposeResult
+{
+    public IElement Content { get; set; }
+    public bool HasMoreContent { get; set; }
+}
+```
+
+### Example: table with per-page subtotals
+
+```csharp
+public struct OrdersTableState
+{
+    public int ShownItemsCount { get; set; }
+}
+
+public class OrdersTableComponent : IDynamicComponent<OrdersTableState>
+{
+    private ICollection<OrderItem> Items { get; }
+    public OrdersTableState State { get; set; }
+
+    public OrdersTableComponent(ICollection<OrderItem> items)
+    {
+        Items = items;
+        State = new OrdersTableState { ShownItemsCount = 0 };
+    }
+
+    public DynamicComponentComposeResult Compose(DynamicContext context)
+    {
+        var header = ComposeHeader(context);
+        var sampleFooter = ComposeFooter(context, []);
+        var decorationHeight = header.Size.Height + sampleFooter.Size.Height;
+
+        var rows = GetItemsForPage(context, decorationHeight).ToList();
+        var footer = ComposeFooter(context, rows.Select(x => x.Item));
+
+        var content = context.CreateElement(container =>
+        {
+            container.Shrink().Decoration(decoration =>
+            {
+                decoration.Before().Element(header);
+
+                decoration.Content().Column(column =>
+                {
+                    foreach (var row in rows)
+                        column.Item().Element(row.Element);
+                });
+
+                decoration.After().Element(footer);
+            });
+        });
+
+        State = new OrdersTableState
+        {
+            ShownItemsCount = State.ShownItemsCount + rows.Count
+        };
+
+        return new DynamicComponentComposeResult
+        {
+            Content = content,
+            HasMoreContent = State.ShownItemsCount < Items.Count
+        };
+    }
+
+    // ComposeHeader, ComposeFooter, GetItemsForPage omitted for brevity
+}
+```
+
+Use `.Dynamic()` to embed a dynamic component in the layout:
+
+```csharp
+page.Content()
+    .Dynamic(new OrdersTableComponent(items));
+```
+
+<Warning>
+The library may call `Compose` more than once per page and may internally adjust the state. Keep state as a `struct` and avoid side effects in `Compose`.
+</Warning>
+
+## Components vs inline lambdas
+
+<AccordionGroup>
+  <Accordion title="Use a component when...">
+    - The same layout appears in multiple places or documents
+    - The layout depends on an injected model
+    - You want to test the layout in isolation
+    - The layout logic is complex enough to deserve its own class
+  </Accordion>
+  <Accordion title="Use an inline lambda when...">
+    - The layout is used in one place only
+    - The structure is short and self-explanatory
+    - No external model is needed
+  </Accordion>
+</AccordionGroup>
+
+An inline lambda is equivalent to calling a local method that takes an `IContainer`:
+
+```csharp
+// Inline lambda
+page.Content().Column(column =>
+{
+    column.Item().Text("Hello");
+    column.Item().Text("World");
+});
+
+// Equivalent extracted method
+void ComposeContent(IContainer container)
+{
+    container.Column(column =>
+    {
+        column.Item().Text("Hello");
+        column.Item().Text("World");
+    });
+}
+
+page.Content().Element(ComposeContent);
+```
+
+Both approaches are valid. Components add structure for reuse; inline lambdas keep simple layouts concise.

@@ -1,0 +1,102 @@
+---
+title: "QuestPDF — Modern PDF Generation for .NET"
+description: "A production-ready C# library for generating PDF documents with a fluent API, component-based layouts, and enterprise-grade features."
+---
+
+QuestPDF is a modern .NET library that lets you design and generate PDF documents the way you write software — with clean, maintainable, strongly-typed C# code. No HTML-to-PDF hacks, no brittle templates, no browser dependencies.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
+    Generate your first PDF in under 5 minutes with a working code example.
+  </Card>
+  <Card title="Installation" icon="download" href="/getting-started/installation">
+    Install QuestPDF via NuGet and set up your project.
+  </Card>
+  <Card title="Document Structure" icon="file-pdf" href="/concepts/document-structure">
+    Understand pages, headers, footers, and the layout model.
+  </Card>
+  <Card title="Layout Elements" icon="table-layout" href="/elements/row-column">
+    Explore Row, Column, Table, Grid, and other layout primitives.
+  </Card>
+</CardGroup>
+
+## Why QuestPDF?
+
+QuestPDF gives you a fluent C# API that composes documents from layout primitives — the same way you compose UI with components. There's no template language to learn and no external process to run.
+
+```csharp
+Document.Create(container =>
+{
+    container.Page(page =>
+    {
+        page.Size(PageSizes.A4);
+        page.Margin(2, Unit.Centimetre);
+
+        page.Header()
+            .Text("Hello PDF!")
+            .SemiBold().FontSize(36).FontColor(Colors.Blue.Medium);
+
+        page.Content()
+            .PaddingVertical(1, Unit.Centimetre)
+            .Column(x =>
+            {
+                x.Spacing(20);
+                x.Item().Text(Placeholders.LoremIpsum());
+                x.Item().Image(Placeholders.Image(200, 100));
+            });
+
+        page.Footer()
+            .AlignCenter()
+            .Text(x =>
+            {
+                x.Span("Page ");
+                x.CurrentPageNumber();
+            });
+    });
+})
+.GeneratePdf("hello.pdf");
+```
+
+## What's included
+
+<CardGroup cols={2}>
+  <Card title="Rich layout engine" icon="layer-group" href="/elements/row-column">
+    Row, Column, Table, Grid, Layers, Inlined, MultiColumn, and more.
+  </Card>
+  <Card title="Full text control" icon="font" href="/concepts/text-styling">
+    Fonts, sizes, weights, colors, spacing, RTL, and dynamic page numbers.
+  </Card>
+  <Card title="Image support" icon="image" href="/concepts/images">
+    PNG, JPG, WEBP, SVG, and dynamic SkiaSharp-rendered images.
+  </Card>
+  <Card title="PDF operations" icon="gears" href="/advanced/document-operations">
+    Merge, split, encrypt, overlay, attach files, and linearize PDFs.
+  </Card>
+  <Card title="PDF/A & PDF/UA" icon="certificate" href="/advanced/pdf-compliance">
+    Archival (PDF/A-2/3) and accessibility (PDF/UA-1) compliance built in.
+  </Card>
+  <Card title="Companion App" icon="eye" href="/companion/overview">
+    Live hot-reload preview — see changes without recompiling.
+  </Card>
+</CardGroup>
+
+## Explore examples
+
+<CardGroup cols={2}>
+  <Card title="Invoice tutorial" icon="file-invoice" href="/examples/invoice-tutorial">
+    Build a fully functional invoice in fewer than 250 lines of C#.
+  </Card>
+  <Card title="Tables & grids" icon="table" href="/examples/tables-grids">
+    Recipes for common table and grid layouts.
+  </Card>
+  <Card title="Charts & barcodes" icon="chart-bar" href="/examples/charts-barcodes">
+    Embed SkiaSharp charts, barcodes, and QR codes.
+  </Card>
+  <Card title="Accessibility" icon="universal-access" href="/examples/accessibility-pdf-ua">
+    Generate accessible PDFs that meet PDF/UA standards.
+  </Card>
+</CardGroup>
+
+<Tip>
+  QuestPDF is free for individuals, non-profits, FOSS projects, and organizations with under $1M in annual revenue. See [license setup](/getting-started/license-setup) for details.
+</Tip>

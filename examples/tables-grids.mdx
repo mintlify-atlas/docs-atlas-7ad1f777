@@ -1,0 +1,299 @@
+---
+title: 'Tables and grids'
+description: 'Recipes for QuestPDF tables: repeating header rows across pages, column and row spans, overlapping cells, manual cell placement, conditional row styling, and mixed column widths.'
+---
+
+QuestPDF's `Table` element supports flexible column width mixing, repeating headers, cell spans, and precise manual placement using row/column indices.
+
+## Mixed column widths
+
+Combine `ConstantColumn` (fixed points) with `RelativeColumn` (proportional) in the same table. Relative values divide the remaining width after constants are subtracted.
+
+```csharp
+// Total container width: 450px
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(150);   // always 150px
+    columns.RelativeColumn(2);     // 2 / (2+3) × 300px = 120px
+    columns.RelativeColumn(3);     // 3 / (2+3) × 300px = 180px
+});
+
+table.Cell().ColumnSpan(3)
+    .Background(Colors.Grey.Lighten2).Element(CellStyle)
+    .Text("Total width: 450px");
+
+table.Cell().Element(CellStyle).Text("Constant: 150px");
+table.Cell().Element(CellStyle).Text("Relative: 2*");
+table.Cell().Element(CellStyle).Text("Relative: 3*");
+
+table.Cell().Element(CellStyle).Text("150px");
+table.Cell().Element(CellStyle).Text("120px");
+table.Cell().Element(CellStyle).Text("180px");
+
+static IContainer CellStyle(IContainer container) =>
+    container.Border(1).Padding(10);
+```
+
+## Simple table with automatic cell placement
+
+When you do not specify `.Row()` and `.Column()`, QuestPDF places cells left-to-right, top-to-bottom in the order they are added.
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(50);
+    columns.RelativeColumn();
+    columns.ConstantColumn(125);
+});
+
+table.Header(header =>
+{
+    header.Cell().BorderBottom(2).Padding(8).Text("#");
+    header.Cell().BorderBottom(2).Padding(8).Text("Product");
+    header.Cell().BorderBottom(2).Padding(8).AlignRight().Text("Price");
+});
+
+foreach (var i in Enumerable.Range(0, 6))
+{
+    var price = Math.Round(Random.Shared.NextDouble() * 100, 2);
+
+    table.Cell().Padding(8).Text($"{i + 1}");
+    table.Cell().Padding(8).Text(Placeholders.Label());
+    table.Cell().Padding(8).AlignRight().Text($"${price}");
+}
+```
+
+## Repeating header rows
+
+Cells inside `table.Header()` repeat at the top of every page when the table overflows. The header supports the same span options as body cells.
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.RelativeColumn();
+    columns.ConstantColumn(80);
+    columns.ConstantColumn(80);
+    columns.ConstantColumn(80);
+    columns.ConstantColumn(80);
+});
+
+table.Header(header =>
+{
+    // "Document type" spans 2 rows vertically
+    header.Cell().RowSpan(2).Element(CellStyle).ExtendHorizontal().AlignLeft()
+        .Text("Document type").Bold();
+
+    // "Inches" and "Points" each span 2 columns
+    header.Cell().ColumnSpan(2).Element(CellStyle).Text("Inches").Bold();
+    header.Cell().ColumnSpan(2).Element(CellStyle).Text("Points").Bold();
+
+    // Second header row — width/height sub-columns
+    header.Cell().Element(CellStyle).Text("Width");
+    header.Cell().Element(CellStyle).Text("Height");
+    header.Cell().Element(CellStyle).Text("Width");
+    header.Cell().Element(CellStyle).Text("Height");
+
+    IContainer CellStyle(IContainer container) =>
+        DefaultCellStyle(container, Colors.Grey.Lighten3);
+});
+
+foreach (var pageSize in pageSizes)
+{
+    table.Cell().Element(CellStyle).ExtendHorizontal().AlignLeft().Text(pageSize.name);
+    table.Cell().Element(CellStyle).Text(pageSize.width);
+    table.Cell().Element(CellStyle).Text(pageSize.height);
+    table.Cell().Element(CellStyle).Text(pageSize.width * inchesToPoints);
+    table.Cell().Element(CellStyle).Text(pageSize.height * inchesToPoints);
+
+    IContainer CellStyle(IContainer container) =>
+        DefaultCellStyle(container, Colors.White).ShowOnce();
+}
+```
+
+<Note>
+Always call `table.Header()` before adding body cells. Cells in the header block are isolated from body cell auto-placement.
+</Note>
+
+## Conditional row styling
+
+Capture the row index in a local function to alternate background colors or apply any per-row logic.
+
+```csharp
+string[] weatherIcons = ["cloudy.svg", "lightning.svg", "pouring.svg",
+                          "rainy.svg", "snowy.svg", "windy.svg"];
+
+table.ColumnsDefinition(columns =>
+{
+    columns.RelativeColumn();
+    columns.ConstantColumn(125);
+    columns.ConstantColumn(125);
+});
+
+table.Header(header =>
+{
+    header.Cell().Element(CellStyle).Text("Day");
+    header.Cell().Element(CellStyle).AlignCenter().Text("Weather");
+    header.Cell().Element(CellStyle).AlignRight().Text("Temp");
+
+    static IContainer CellStyle(IContainer container) =>
+        container
+            .Background(Colors.Blue.Darken2)
+            .DefaultTextStyle(x => x.FontColor(Colors.White).Bold())
+            .PaddingVertical(8)
+            .PaddingHorizontal(16);
+});
+
+foreach (var i in Enumerable.Range(0, 7))
+{
+    var weatherIndex = Random.Shared.Next(0, weatherIcons.Length);
+
+    table.Cell().Element(CellStyle)
+        .Text(new DateTime(2025, 2, 26).AddDays(i).ToString("dd MMMM"));
+
+    table.Cell().Element(CellStyle).AlignCenter().Height(24)
+        .Svg($"Resources/WeatherIcons/{weatherIcons[weatherIndex]}");
+
+    table.Cell().Element(CellStyle).AlignRight()
+        .Text($"{Random.Shared.Next(-10, 35)}°");
+
+    // Local function captures the loop variable 'i'
+    IContainer CellStyle(IContainer container)
+    {
+        var backgroundColor = i % 2 == 0
+            ? Colors.Blue.Lighten5
+            : Colors.Blue.Lighten4;
+
+        return container
+            .Background(backgroundColor)
+            .PaddingVertical(8)
+            .PaddingHorizontal(16);
+    }
+}
+```
+
+## Manual cell placement with row and column spans
+
+Specify `.Row()`, `.Column()`, `.RowSpan()`, and `.ColumnSpan()` explicitly to build irregular layouts such as confusion matrices or merged-header tables.
+
+```csharp
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(75);
+    columns.ConstantColumn(150);
+    columns.ConstantColumn(200);
+    columns.ConstantColumn(200);
+});
+
+// "Predicted condition" header spans columns 3–4 in row 1
+table.Cell().Row(1).Column(3).ColumnSpan(2)
+    .Element(HeaderCellStyle)
+    .Text("Predicted condition").Bold();
+
+// "Actual condition" spans rows 3–4, rotated 90°
+table.Cell().Row(3).Column(1).RowSpan(2)
+    .Element(HeaderCellStyle).RotateLeft()
+    .Text("Actual\ncondition").Bold().AlignCenter();
+
+table.Cell().Row(2).Column(3).Element(HeaderCellStyle).Text("Positive (PP)");
+table.Cell().Row(2).Column(4).Element(HeaderCellStyle).Text("Negative (PN)");
+
+table.Cell().Row(3).Column(2).Element(HeaderCellStyle).Text("Positive (P)");
+table.Cell().Row(4).Column(2).Element(HeaderCellStyle).Text("Negative (N)");
+
+table.Cell().Row(3).Column(3).Element(GoodCellStyle).Text("True positive (TP)");
+table.Cell().Row(3).Column(4).Element(BadCellStyle).Text("False negative (FN)");
+table.Cell().Row(4).Column(3).Element(BadCellStyle).Text("False positive (FP)");
+table.Cell().Row(4).Column(4).Element(GoodCellStyle).Text("True negative (TN)");
+
+static IContainer CellStyle(IContainer container, Color color) =>
+    container.Border(1).Background(color)
+        .PaddingHorizontal(10).PaddingVertical(15)
+        .AlignCenter().AlignMiddle();
+
+static IContainer HeaderCellStyle(IContainer c) =>
+    CellStyle(c, Colors.Grey.Lighten4);
+
+static IContainer GoodCellStyle(IContainer c) =>
+    CellStyle(c, Colors.Green.Lighten4)
+        .DefaultTextStyle(x => x.FontColor(Colors.Green.Darken2));
+
+static IContainer BadCellStyle(IContainer c) =>
+    CellStyle(c, Colors.Red.Lighten4)
+        .DefaultTextStyle(x => x.FontColor(Colors.Red.Darken2));
+```
+
+<Warning>
+When placing cells manually, QuestPDF does not auto-fill gaps. Every cell occupies exactly the position and span you declare. Overlapping placements stack visually rather than producing an error.
+</Warning>
+
+## Overlapping cells for calendar-style layouts
+
+A `RowSpan` that stretches the full height of the table is a useful technique for background stripes and calendar event blocks. Combine it with explicit `.Row()` and `.Column()` placement to build Gantt charts or weekly planners.
+
+```csharp
+string[] dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+table.ColumnsDefinition(columns =>
+{
+    columns.ConstantColumn(60);                         // hour labels
+    foreach (var _ in Enumerable.Range(0, 5))
+        columns.RelativeColumn();                       // one column per weekday
+});
+
+// Alternating column backgrounds — each spans all 24 rows
+foreach (var col in Enumerable.Range(0, 7))
+{
+    var backgroundColor = col % 2 == 0 ? Colors.Grey.Lighten3 : Colors.White;
+    table.Cell().Column((uint)col).RowSpan(24).Background(backgroundColor);
+}
+
+// Hour labels and horizontal grid lines
+foreach (var hour in Enumerable.Range(6, 10))
+{
+    table.Cell().Column(1).Row((uint)hour)
+        .PaddingVertical(5).PaddingHorizontal(10).AlignRight()
+        .Text($"{hour}");
+
+    table.Cell().Row((uint)hour).ColumnSpan(6)
+        .Border(1).BorderColor(Colors.Grey.Lighten1).Height(20);
+}
+
+// Day name headers
+foreach (var i in Enumerable.Range(0, 5))
+{
+    table.Cell().Column((uint)i + 2).Row(1).Padding(5)
+        .Column(column =>
+        {
+            column.Item().AlignCenter().Text($"{17 + i}").FontSize(24).Bold();
+            column.Item().AlignCenter().Text(dayNames[i]).Light();
+        });
+}
+
+// Calendar event helper
+void AddEvent(uint day, uint hour, uint length, string name, Color bg, Color fg)
+{
+    table.Cell()
+        .Column(day + 1).Row(hour).RowSpan(length)
+        .Padding(5).Background(bg).Padding(5)
+        .AlignCenter().AlignMiddle()
+        .Text(name).FontColor(fg);
+}
+
+// Standup meetings
+foreach (var i in Enumerable.Range(1, 4))
+    AddEvent((uint)i, 8, 1, "Standup", Colors.Blue.Lighten4, Colors.Blue.Darken3);
+
+// Other events
+AddEvent(2, 11, 2,  "Interview", Colors.Red.Lighten4,   Colors.Red.Darken3);
+AddEvent(3, 12, 3,  "Demo",      Colors.Red.Lighten4,   Colors.Red.Darken3);
+AddEvent(5,  5, 17, "PTO",       Colors.Green.Lighten4, Colors.Green.Darken3);
+```
+
+<CardGroup cols={2}>
+  <Card title="Invoice tutorial" icon="file-invoice" href="/examples/invoice-tutorial">
+    See tables in a complete invoice document with line items and totals.
+  </Card>
+  <Card title="Accessibility and PDF/UA" icon="universal-access" href="/examples/accessibility-pdf-ua">
+    Attach semantic table tags for screen readers and PDF/UA conformance.
+  </Card>
+</CardGroup>

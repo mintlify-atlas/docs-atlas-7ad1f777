@@ -1,0 +1,231 @@
+---
+title: "Page settings"
+description: "Page sizes, fixed and continuous dimensions, margins, background color, default text style, background and foreground layers, and unit conversions."
+---
+
+Page settings are configured inside the `document.Page(page => { ... })` delegate. Each call creates a page set — pages sharing the same size, margins, background, and styling.
+
+## Page sizes
+
+### Predefined sizes
+
+`PageSizes` provides constants for standard paper formats. All sizes are stored in points (72 pt = 1 inch).
+
+```csharp
+page.Size(PageSizes.A4);       // 595 × 842 pt
+page.Size(PageSizes.Letter);   // 612 × 792 pt
+page.Size(PageSizes.Legal);    // 612 × 1008 pt
+page.Size(PageSizes.A5);       // 420 × 595 pt
+```
+
+Common predefined sizes include the full ISO A, B, and C series (A0–A10, B0–B10, C0–C10), North American formats (`Letter`, `Legal`, `Ledger`, `Tabloid`, `Executive`, `Postcard`), envelope formats (`Env10`, `EnvC4`, `EnvDL`), and architectural sizes (`ARCH_A` through `ARCH_E3`).
+
+### Orientation
+
+Use the `.Portrait()` and `.Landscape()` extension methods to change page orientation:
+
+```csharp
+page.Size(PageSizes.A4.Portrait());   // width < height
+page.Size(PageSizes.A4.Landscape());  // width > height
+```
+
+### Custom size
+
+Pass explicit dimensions using the `PageSize` constructor. The optional `unit` parameter specifies the measurement unit (default: `Unit.Point`).
+
+```csharp
+// 100 × 150 millimetres
+page.Size(new PageSize(100, 150, Unit.Millimetre));
+
+// 8.5 × 11 inches
+page.Size(new PageSize(8.5f, 11f, Unit.Inch));
+```
+
+### Continuous size (roll paper)
+
+`ContinuousSize` fixes the page width and lets the height grow to fit the content. This is useful for receipt printers or any roll-format output.
+
+```csharp
+page.ContinuousSize(250, Unit.Point);
+```
+
+### Flexible size
+
+Use `MinSize` and `MaxSize` independently to allow pages to vary in size based on content:
+
+```csharp
+page.MinSize(new PageSize(0, 0));
+page.MaxSize(new PageSize(400, 1000));
+```
+
+<Note>
+When `MinSize` equals `MaxSize`, the page has a fixed size. When they differ, the layout engine picks the smallest page size that fits the content.
+</Note>
+
+## Margins
+
+Margins add empty space around the primary layer (header + content + footer). They do not affect the `Background()` or `Foreground()` layers.
+
+```csharp
+// All sides
+page.Margin(2, Unit.Centimetre);
+
+// Individual sides
+page.MarginLeft(1.5f, Unit.Centimetre);
+page.MarginRight(1.5f, Unit.Centimetre);
+page.MarginTop(2, Unit.Centimetre);
+page.MarginBottom(2, Unit.Centimetre);
+
+// Axis shortcuts
+page.MarginHorizontal(1.5f, Unit.Centimetre);  // left + right
+page.MarginVertical(2, Unit.Centimetre);        // top + bottom
+```
+
+All margin methods accept an optional `Unit` parameter (default: `Unit.Point`).
+
+## Page color
+
+Sets the background color of every page in the set. The default is white.
+
+```csharp
+page.PageColor(Colors.White);
+page.PageColor(Colors.Grey.Lighten3);
+
+// Transparent background (supported by image and SVG output formats)
+page.PageColor(Colors.Transparent);
+```
+
+## DefaultTextStyle
+
+Applies a base text style to all `Text()` elements within the page set. Child containers can override or extend it.
+
+```csharp
+// Using a handler
+page.DefaultTextStyle(x => x.FontSize(20).FontFamily("Times New Roman"));
+
+// Using a TextStyle object
+page.DefaultTextStyle(TextStyle.Default.FontSize(20).Bold());
+```
+
+## Background and foreground layers
+
+### Background()
+
+Rendered behind the header, content, and footer. Not clipped by margins — it always fills the full page. Useful for background images, patterns, or certificates.
+
+```csharp
+page.Background().Svg("Resources/certificate-background.svg").FitArea();
+```
+
+Full example of a certificate layout:
+
+```csharp
+document.Page(page =>
+{
+    page.Size(PageSizes.A4.Landscape());
+
+    page.Background().Svg("Resources/certificate-background.svg").FitArea();
+
+    page.Content()
+        .PaddingLeft(10, Unit.Centimetre)
+        .PaddingRight(5, Unit.Centimetre)
+        .AlignMiddle()
+        .Column(column =>
+        {
+            column.Item().Height(50).Svg("Resources/questpdf-logo.svg");
+            column.Item().Height(50);
+            column.Item().Text("CERTIFICATE").FontSize(64).ExtraBlack();
+            column.Item().Height(25);
+            column.Item()
+                .Shrink().BorderBottom(1).Padding(10)
+                .Text("Marcin Ziąbek").FontSize(32).Italic();
+            column.Item().Height(10);
+            column.Item()
+                .Text($"has successfully completed the course on {DateTime.Now:dd MMM yyyy}.")
+                .FontSize(20).Light();
+        });
+});
+```
+
+### Foreground()
+
+Rendered in front of the primary layer — useful for watermarks, stamps, or draft overlays.
+
+```csharp
+document.Page(page =>
+{
+    page.Size(PageSizes.A4);
+    page.Margin(2, Unit.Centimetre);
+    page.DefaultTextStyle(x => x.FontSize(20));
+
+    page.Header()
+        .PaddingBottom(1, Unit.Centimetre)
+        .Text("Report")
+        .FontSize(30)
+        .Bold();
+
+    page.Content()
+        .Text(Placeholders.Paragraphs())
+        .ParagraphSpacing(1, Unit.Centimetre)
+        .Justify();
+
+    page.Foreground().Svg("Resources/draft-foreground.svg").FitArea();
+});
+```
+
+<Warning>
+`Background()` and `Foreground()` can each be called only once per page. Calling them a second time throws a `DocumentComposeException`.
+</Warning>
+
+## Multiple page sets
+
+Call `document.Page(...)` multiple times to create pages with different characteristics in the same document. Each page set is independent.
+
+```csharp
+Document
+    .Create(document =>
+    {
+        // Cover page — A4, landscape
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A4.Landscape());
+            page.Margin(3, Unit.Centimetre);
+            page.Content().AlignCenter().AlignMiddle().Text("Cover").FontSize(48).Bold();
+        });
+
+        // Content pages — A4, portrait
+        document.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(2, Unit.Centimetre);
+            page.DefaultTextStyle(x => x.FontSize(12));
+            page.Content().Text(Placeholders.Paragraphs());
+        });
+    })
+    .GeneratePdf("output.pdf");
+```
+
+## Unit enum
+
+All dimension methods accept an optional `Unit` parameter. The default unit is `Point`.
+
+| Unit | Description |
+|------|-------------|
+| `Unit.Point` | PDF native unit. 72 points = 1 inch (default) |
+| `Unit.Millimetre` | Metric |
+| `Unit.Centimetre` | Metric |
+| `Unit.Inch` | Imperial |
+| `Unit.Meter` | Metric |
+| `Unit.Feet` | Imperial |
+| `Unit.Mil` | 1/1000th of an inch |
+
+```csharp
+page.Size(PageSizes.A4);                           // points (default)
+page.Margin(2, Unit.Centimetre);                   // centimetres
+page.MarginLeft(0.75f, Unit.Inch);                 // inches
+page.Size(new PageSize(210, 297, Unit.Millimetre)); // custom A4 in mm
+```
+
+<Tip>
+Use `Unit.Millimetre` or `Unit.Inch` when working with physical measurements from design files. QuestPDF converts all values to points internally.
+</Tip>

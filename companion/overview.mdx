@@ -1,0 +1,35 @@
+---
+title: "Companion App overview"
+description: "A desktop tool for live PDF preview, document inspection, and layout debugging during QuestPDF development."
+---
+
+The QuestPDF Companion App is a standalone desktop application that connects to your running .NET process and displays a live preview of your document as you develop it. Instead of generating a PDF file and opening it manually, you call a single method and the Companion App reflects every change in real time.
+
+## Features
+
+**Live document preview** — the Companion App renders your document and updates the preview automatically whenever your code changes, without requiring a full recompile. See [hot reload](/companion/hot-reload) for setup details.
+
+**Document hierarchy navigation** — explore the full element tree of your PDF. Select any node in the hierarchy to highlight the corresponding region on the page, making it straightforward to trace which part of your code produced a given visual element.
+
+**Magnify and measure** — zoom into any area of the rendered page and measure content dimensions directly in the preview window.
+
+**Exception debugging** — when your document throws a runtime exception, the Companion App displays the full stack trace alongside the relevant code snippets rather than crashing silently. You can inspect the error in context without switching to your IDE.
+
+**Layout error identification** — QuestPDF detects common layout problems such as content overflowing its container. The Companion App surfaces these errors with visual indicators and explanations so you can diagnose and fix them quickly.
+
+## Requirements
+
+- .NET 6 or later (the Companion integration is not available on older frameworks)
+- The Companion App desktop application, available for download at [questpdf.com](https://www.questpdf.com)
+
+## How it works
+
+The Companion App runs as a local HTTP server on your machine. Your .NET application connects to it on **port 12500** by default and pushes document snapshots over that connection. The app renders each snapshot and keeps the preview in sync as snapshots arrive.
+
+<Note>
+  The Companion App is a separate download from the QuestPDF NuGet package. Install the NuGet package in your project as usual, then download and launch the desktop app from [questpdf.com](https://www.questpdf.com) before calling `ShowInCompanion`.
+</Note>
+
+## Next step
+
+Once the Companion App is installed and running, see [Hot reload](/companion/hot-reload) to integrate it into your development workflow with a single method call.
